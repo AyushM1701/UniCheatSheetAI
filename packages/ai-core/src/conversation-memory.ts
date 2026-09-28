@@ -1,27 +1,34 @@
 import { db } from '@ucs/database';
+import { randomUUID } from 'node:crypto';
 import type { LLMMessage } from '@ucs/llm';
 import type { Citation, ChatInput } from './types.js';
 export class UnknownConversationError extends Error {}
-export async function getConversation(input: ChatInput, courseId: string | null, semester: number | null, userId: string, allowedCourseIds: string[]): Promise<{ id: string; history: LLMMessage[] }> {
+export interface ConversationState { id: string; title: string; courseId: string | null; semester: number | null; userId: string; allowedCourseIds: string[]; history: LLMMessage[]; lastCitations: Citation[] }
+export async function getConversation(input: ChatInput, courseId: string | null, semester: number | null, userId: string, allowedCourseIds: string[]): Promise<ConversationState> {
   const scopeIds = courseId ? [courseId] : allowedCourseIds;
   if (!input.conversationId) {
-    const created = await db.conversation.create({ data: { title: input.message.slice(0, 100), courseId, semester, userId, allowedCourseIds: scopeIds } });
-    return { id: created.id, history: [] };
+    return { id: randomUUID(), title: input.message.slice(0, 100), courseId, semester, userId, allowedCourseIds: scopeIds, history: [], lastCitations: [] };
   }
   const conversation = await db.conversation.findFirst({ where: { id: input.conversationId, userId } });
   if (!conversation) throw new UnknownConversationError('Conversation not found');
   if (!conversation.allowedCourseIds.every((id) => allowedCourseIds.includes(id))) throw new UnknownConversationError('Conversation is outside your current access');
   const usedIds = [...new Set([...conversation.allowedCourseIds, ...scopeIds])];
   const changedCourse = conversation.courseId !== courseId;
-  if (conversation.courseId !== courseId || conversation.semester !== semester || usedIds.length !== conversation.allowedCourseIds.length) await db.conversation.update({ where: { id: conversation.id }, data: { courseId, semester, allowedCourseIds: usedIds } });
-  if (changedCourse) return { id: conversation.id, history: [] };
+  const state = { id: conversation.id, title: conversation.title ?? input.message.slice(0, 100), courseId, semester, userId, allowedCourseIds: usedIds };
+  if (changedCourse) return { ...state, history: [], lastCitations: [] };
   const recent = await db.message.findMany({ where: { conversationId: conversation.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 10 });
-  return { id: conversation.id, history: recent.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.replace(/\[S\d+\]/g, '').slice(0, 4000) })) };
+  const lastAssistant = recent.find((item) => item.role === 'assistant' && /^Here are \d+ questions from your indexed past papers:/.test(item.content))
+    ?? recent.find((item) => item.role === 'assistant');
+  const lastCitations = Array.isArray(lastAssistant?.citations)
+    ? lastAssistant.citations.filter((item): item is typeof item & { chunkId: string } => !!item && typeof item === 'object' && !Array.isArray(item) && typeof item.chunkId === 'string') as unknown as Citation[]
+    : [];
+  return { ...state, lastCitations, history: recent.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.replace(/\[S\d+\]/g, '').slice(0, 4000) })) };
 }
-export async function saveExchange(conversationId: string, question: string, answer: string, citations: Citation[]): Promise<void> {
+export async function saveExchange(conversation: ConversationState, question: string, answer: string, citations: Citation[]): Promise<void> {
   await db.$transaction(async (tx) => {
-    await tx.message.create({ data: { conversationId, role: 'user', content: question } });
-    await tx.message.create({ data: { conversationId, role: 'assistant', content: answer, citations: citations as object[], sources: citations as object[] } });
-    await tx.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    await tx.conversation.upsert({ where: { id: conversation.id }, create: { id: conversation.id, title: conversation.title, courseId: conversation.courseId, semester: conversation.semester, userId: conversation.userId, allowedCourseIds: conversation.allowedCourseIds }, update: { courseId: conversation.courseId, semester: conversation.semester, allowedCourseIds: conversation.allowedCourseIds } });
+    await tx.message.create({ data: { conversationId: conversation.id, role: 'user', content: question } });
+    await tx.message.create({ data: { conversationId: conversation.id, role: 'assistant', content: answer, citations: citations as object[], sources: citations as object[] } });
+    await tx.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
   });
 }

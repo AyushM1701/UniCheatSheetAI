@@ -3,6 +3,7 @@ export function routeQuery(message: string): QueryIntent {
   const text = message.toLowerCase();
   if (!/\b(?:do not|don't|dont|without|no)\s+(?:generate|create|make|write)\b/.test(text) && /\b(generate|create|make|write)\b[\s\S]*\b(practice|quiz|questions?|mcqs?)\b|\b(practice|quiz)\b[\s\S]*\b(questions?|mcqs?)\b/.test(text)) return 'practice_generation';
   if (/\b(how many|count|number of)\b[\s\S]*\b(notes?|files?|documents?|resources?|pyqs?|papers?)\b/.test(text)) return 'database_query';
+  if (/\b(?:explain|solve|answer|work through|walk through|teach|derive|demonstrate)\b/.test(text) && /\b(pyqs?|previous year|past papers?|question papers?)\b/.test(text)) return 'academic_rag';
   if (/\b(pyqs?|previous year|past papers?|question papers?)\b/.test(text)) return 'resource_search';
   if (/^(hi|hello|hey|thanks|thank you)[!.\s]*$/.test(text.trim())) return 'general_chat';
   return 'academic_rag';
@@ -17,5 +18,6 @@ export function retrievalQuery(message: string, courseId?: string | null, histor
   if (prior && /\b(it|its|this|that|these|those|them)\b/i.test(message) && message.trim().split(/\s+/).length <= 12) {
     return `${retrievalQuery(prior.content, courseId).slice(0, 220)} ${cleaned}`.trim();
   }
-  return cleaned.length >= 2 ? cleaned : message;
+  const filler = new Set(['a', 'an', 'and', 'based', 'for', 'in', 'me', 'my', 'of', 'on', 'please', 'some', 'the', 'these', 'those', 'to']);
+  return cleaned.split(/\s+/).some((word) => word && !filler.has(word.toLowerCase())) ? cleaned : '';
 }

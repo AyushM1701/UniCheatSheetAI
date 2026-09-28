@@ -7,5 +7,5 @@ export function buildContext(hits: RetrievalHit[]): CitedSource[] {
   });
 }
 export function formatSources(sources: CitedSource[]): string {
-  return sources.map(({ id, hit }) => `[${id}]\nTitle: ${hit.documentTitle}\nOrigin: ${hit.source}\nType: ${hit.type}\nPage: ${hit.pageStart ?? hit.page ?? 'unknown'}\nContent: ${hit.content}`).join('\n\n') + '\nEND SOURCES';
+  return sources.map(({ id, hit }) => `[${id}]\nTitle: ${hit.documentTitle}\nOrigin: ${hit.source}\nType: ${hit.type}\nPage: ${hit.pageStart ?? hit.page ?? 'unknown'}\nExtraction: ${hit.extractionMethod}${hit.needsReview ? ' (uncertain OCR; equations and symbols may be wrong)' : ''}\nContent: ${hit.content}`).join('\n\n') + '\nEND SOURCES';
 }

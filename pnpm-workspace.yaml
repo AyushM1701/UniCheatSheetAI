@@ -2,6 +2,9 @@ packages:
   - "apps/*"
   - "packages/*"
   - "packages/providers/llm"
+overrides:
+  '@huggingface/transformers>sharp': 0.35.4
+  '@prisma/config>deepmerge-ts': 8.0.0
 onlyBuiltDependencies:
   - "@prisma/client"
   - "@prisma/engines"

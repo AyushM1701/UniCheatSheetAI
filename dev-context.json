@@ -5,7 +5,6 @@
     { "id": "evs-living-lab", "name": "EVS Living Lab" },
     { "id": "physics", "name": "Physics" },
     { "id": "computer-architecture", "name": "Computer System and Organization Architecture" },
-    { "id": "digital-electronics-bsc", "name": "Digital Electronics (B.Sc. CSE)" },
     { "id": "digital-electronics", "name": "Digital Electronics (B.Tech CSE)" }
   ],
   "currentCourseId": null

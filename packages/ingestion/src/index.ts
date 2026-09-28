@@ -15,9 +15,9 @@ function chunkSettings() {
   return { maxTokens, overlapTokens };
 }
 
-export function currentIndexingKey(): string {
+export function currentIndexingKey(type?: string): string {
   const settings = chunkSettings();
-  return `${getEmbeddingProvider().id}:${settings.maxTokens}:${settings.overlapTokens}:token-aware-v2`;
+  return `${getEmbeddingProvider().id}:${settings.maxTokens}:${settings.overlapTokens}:ocr-v3:${process.env.OCR_ENABLED === 'true' ? `${process.env.OCR_ENGINE ?? 'auto'}:${process.env.OCR_HANDWRITING_ENABLED === 'true'}` : 'disabled'}${type === 'pyq' ? ':pyq-v2' : ''}`;
 }
 
 async function fitModelWindow(chunks: Awaited<ReturnType<typeof processDocument>>['chunks'], countTokens?: (text: string) => Promise<number>) {
@@ -56,7 +56,7 @@ export async function ingestPdf(input: IngestPdfInput): Promise<IngestResult> {
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const provider = getEmbeddingProvider();
   const settings = chunkSettings();
-  const indexingKey = currentIndexingKey();
+  const indexingKey = currentIndexingKey(input.type);
   const existing = await db.academicDocument.findUnique({ where: { id: input.documentId } });
   const oldMetadata = existing?.metadata as { indexingKey?: string; pages?: number; words?: number } | undefined;
   if (existing?.checksum === checksum && oldMetadata?.indexingKey === indexingKey && existing.processingStatus === 'indexed' && existing.courseId === input.courseId) {
@@ -77,13 +77,24 @@ export async function ingestPdf(input: IngestPdfInput): Promise<IngestResult> {
     const embeddings: number[][] = [];
     for (let start = 0; start < chunks.length; start += 16) embeddings.push(...await provider.embed(chunks.slice(start, start + 16).map((chunk) => chunk.content)));
     if (embeddings.length !== chunks.length || embeddings.some((vector) => vector.length !== 384 || vector.some((value) => !Number.isFinite(value)))) throw new Error('Embedding dimensions mismatch');
-    const metadata = { indexingKey, pages: processed.pageCount, words, embeddingDimensions: provider.dimensions };
+    const metadata = {
+      indexingKey, pages: processed.pageCount, words, embeddingDimensions: provider.dimensions,
+      pageExtraction: processed.pages.map((page) => ({
+        pageNumber: page.pageNumber,
+        method: page.extractionMethod ?? 'native',
+        ...(page.ocrConfidence !== undefined && { confidence: page.ocrConfidence }),
+        needsReview: page.needsReview === true,
+        hasLocalImage: Boolean(page.pageImagePath)
+      }))
+    };
     await db.$transaction(async (tx) => {
       await tx.documentChunk.deleteMany({ where: { documentId: input.documentId } });
       for (let index = 0; index < chunks.length; index++) {
         const chunk = chunks[index]!;
         const vector = `[${embeddings[index]!.join(',')}]`;
-        await tx.$executeRaw`INSERT INTO document_chunks (id, document_id, course_id, chunk_index, content, page, page_start, page_end, token_estimate, embedding) VALUES (${randomUUID()}, ${input.documentId}, ${input.courseId}, ${chunk.chunkIndex}, ${chunk.content}, ${chunk.pageStart}, ${chunk.pageStart}, ${chunk.pageEnd}, ${chunk.tokenEstimate}, ${vector}::vector)`;
+        const page = processed.pages.find((item) => item.pageNumber === chunk.pageStart);
+        const chunkMetadata = JSON.stringify({ extractionMethod: page?.extractionMethod ?? 'native', needsReview: page?.needsReview === true });
+        await tx.$executeRaw`INSERT INTO document_chunks (id, document_id, course_id, chunk_index, content, page, page_start, page_end, token_estimate, metadata, embedding) VALUES (${randomUUID()}, ${input.documentId}, ${input.courseId}, ${chunk.chunkIndex}, ${chunk.content}, ${chunk.pageStart}, ${chunk.pageStart}, ${chunk.pageEnd}, ${chunk.tokenEstimate}, ${chunkMetadata}::jsonb, ${vector}::vector)`;
       }
       await tx.academicDocument.update({ where: { id: input.documentId }, data: { courseId: input.courseId, type: input.type, title: input.title, source: input.source ?? 'local', sourceUrl: input.sourceUrl ?? null, filePath: basename(filePath), metadata, checksum, pageCount: processed.pageCount, processingStatus: 'indexed' } });
       await tx.ingestionRun.create({ data: { documentId: input.documentId, status: 'completed', detail: `${chunks.length} chunks and embeddings from ${processed.pageCount} pages` } });

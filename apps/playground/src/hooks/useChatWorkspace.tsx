@@ -1,12 +1,12 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ai } from '@/lib/api/ai-client';
-import type { ChatResult, ChatScope, ChatStatus, Citation, ConversationSummary, Course, CoverageItem, UIMessage } from '@/types/chat';
+import { AiApiError, ai, onAiClientConfigured } from '@/lib/api/ai-client';
+import type { ChatResult, ChatScope, ChatStatus, Citation, ConversationSummary, CoverageItem, UIMessage, UserAcademicContext } from '@/types/chat';
 
 type WorkspaceContext = {
   messages: UIMessage[]; status: ChatStatus; error: string | null; scope: ChatScope; setScope: (scope: ChatScope) => void;
-  courses: Course[]; semester: number | null; history: ConversationSummary[]; conversationId: string | null; sourceCount: number;
+  courses: UserAcademicContext['allowedCourses']; semester: number | null; history: ConversationSummary[]; conversationId: string | null; sourceCount: number;
   coverage: CoverageItem[];
   send: (message: string) => Promise<boolean>; stop: () => void; openConversation: (id: string) => Promise<void>; newChat: () => void; refreshHistory: () => Promise<void>;
   drawerCitation: Citation | null; openSource: (citation: Citation) => void; closeSource: () => void;
@@ -22,9 +22,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<ChatScope>({ sources: ['unicheatsheet'] });
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<UserAcademicContext['allowedCourses']>([]);
   const [semester, setSemester] = useState<number | null>(null);
   const defaultCourse = useRef<string | null>(null);
+  const academicContextKey = useRef<string | null>(null);
+  const contextRequest = useRef(0);
   const [history, setHistory] = useState<ConversationSummary[]>([]);
   const [coverage, setCoverage] = useState<CoverageItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -37,16 +39,61 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const pendingUserId = useRef<string | null>(null);
   const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
   useEffect(() => { if (pathname === navigationTarget) setNavigationTarget(null); }, [pathname, navigationTarget]);
-  useEffect(() => {
-    Promise.all([ai.getContext(), ai.getCourses()]).then(([context, courseRows]) => {
-      setCourses(courseRows);
+  const clearSession = useCallback(() => {
+    ++requestVersion.current;
+    activeController.current?.abort();
+    activeController.current = null;
+    active.current = false;
+    pendingUserId.current = null;
+    defaultCourse.current = null;
+    setMessages([]); setConversationId(null); setScope({ sources: ['unicheatsheet'] });
+    setHistory([]); setCoverage([]); setSourceCount(0); setDrawerCitation(null);
+    setStatus('idle'); setNavigationTarget('/');
+    router.replace('/');
+  }, [router]);
+  const loadAcademicContext = useCallback(async () => {
+    const version = ++contextRequest.current;
+    try {
+      const context = await ai.getContext();
+      if (version !== contextRequest.current) return;
+      const key = JSON.stringify([context.accountKey, context.semester, [...context.allowedCourses.map((course) => course.id)].sort()]);
+      const initializeDefault = academicContextKey.current === null || academicContextKey.current !== key;
+      if (academicContextKey.current !== null && academicContextKey.current !== key) clearSession();
+      academicContextKey.current = key;
       setSemester(context.semester);
+      setCourses(context.allowedCourses);
       defaultCourse.current = context.currentCourseId ?? null;
-      if (context.currentCourseId && pathname === '/') setScope((current) => current.courseId ? current : { courseId: context.currentCourseId ?? undefined, sources: ['unicheatsheet'] });
-    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load course access'));
-    ai.getConversations().then(setHistory).catch(() => undefined);
-    ai.getCoverage().then(setCoverage).catch(() => undefined);
-  }, [pathname]);
+      setScope((current) => current.courseId && context.allowedCourses.some((course) => course.id === current.courseId)
+        ? current
+        : current.courseId || initializeDefault
+          ? { sources: ['unicheatsheet'], courseId: context.currentCourseId ?? undefined }
+          : current);
+      setError(null);
+      const [conversations, sourceCoverage] = await Promise.allSettled([ai.getConversations(), ai.getCoverage()]);
+      if (version !== contextRequest.current) return;
+      if (conversations.status === 'fulfilled') setHistory(conversations.value);
+      if (sourceCoverage.status === 'fulfilled') setCoverage(sourceCoverage.value);
+    } catch (cause) {
+      if (version !== contextRequest.current) return;
+      if (cause instanceof AiApiError && (cause.status === 401 || cause.status === 403)) {
+        clearSession(); academicContextKey.current = null;
+        setSemester(null); setCourses([]);
+      }
+      setError(cause instanceof Error ? cause.message : 'Could not load course access');
+    }
+  }, [clearSession]);
+  useEffect(() => { void loadAcademicContext(); }, [pathname, loadAcademicContext]);
+  useEffect(() => {
+    const unsubscribe = onAiClientConfigured(() => {
+      ++contextRequest.current;
+      clearSession(); academicContextKey.current = null;
+      setSemester(null); setCourses([]); setError(null);
+      void loadAcademicContext();
+    });
+    const onFocus = () => { void loadAcademicContext(); };
+    window.addEventListener('focus', onFocus);
+    return () => { unsubscribe(); window.removeEventListener('focus', onFocus); };
+  }, [clearSession, loadAcademicContext]);
   const refreshHistory = useCallback(async () => { setHistory(await ai.getConversations()); }, []);
   const openConversation = useCallback(async (id: string) => {
     if (id === conversationId && messages.length) return;
@@ -61,7 +108,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setScope({ courseId: conversation.courseId ?? undefined, sources: ['unicheatsheet'] });
       setMessages(conversation.messages.filter((item): item is typeof item & { role: 'user' | 'assistant' } => item.role === 'user' || item.role === 'assistant').map((item) => ({ id: item.id, role: item.role, content: item.content, citations: Array.isArray(item.citations) ? item.citations : [] })));
       setConversationId(id); setStatus('complete'); setSourceCount(0);
-    } catch (cause) { if (version === requestVersion.current) { setStatus('error'); setError(cause instanceof Error ? cause.message : 'Could not open conversation'); } }
+    } catch (cause) { if (version === requestVersion.current) { setMessages([]); setConversationId(null); setStatus('error'); setError(cause instanceof Error ? cause.message : 'Could not open conversation'); } }
   }, [conversationId, messages.length]);
   const newChat = useCallback(() => { ++requestVersion.current; activeController.current?.abort(); active.current = false; pendingUserId.current = null; setNavigationTarget('/'); setMessages([]); setConversationId(null); setScope({ courseId: defaultCourse.current ?? undefined, sources: ['unicheatsheet'] }); setStatus('idle'); setError(null); setSourceCount(0); setDrawerCitation(null); router.push('/'); }, [router]);
   const stop = useCallback(() => { ++requestVersion.current; activeController.current?.abort(); activeController.current = null; active.current = false; const id = pendingUserId.current; pendingUserId.current = null; setMessages((current) => current.filter((item) => !item.pending && item.id !== id)); setStatus('idle'); setError(null); }, []);

@@ -20,3 +20,27 @@
 @media(max-width:900px){.chat-sidebar:not(.is-open){visibility:hidden}.chat-sidebar.is-open{visibility:visible}}
 .message-body table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}.message-body th,.message-body td{border:1px solid rgba(255,255,255,.2);padding:8px 10px}
 .sidebar-eyebrow,.sidebar-section-title,.sidebar-footer,.chat-topline,.sources-heading{color:rgba(255,255,255,.65)}
+
+/* Course access menu: options come from /v1/context, not indexed documents. */
+.scope-select-wrap{position:relative;display:block;height:auto;max-width:min(230px,42vw);padding:0;border:0;border-radius:10px;background:none;color:inherit;cursor:default;z-index:5}
+.scope-select-wrap:hover,.scope-select-wrap.is-open{border:0;background:none}
+.scope-trigger{display:flex;align-items:center;gap:8px;max-width:100%;height:35px;padding:0 10px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(255,255,255,.055);color:rgba(255,255,255,.86);font-size:12px;text-align:left;transition:border-color .18s,background .18s,box-shadow .18s}
+.scope-trigger:hover,.scope-select-wrap.is-open .scope-trigger{border-color:rgba(0,229,255,.42);background:rgba(0,229,255,.075);box-shadow:0 0 18px rgba(0,229,255,.05)}
+.scope-trigger svg:first-child{color:var(--accent);flex:none}.scope-chevron{color:rgba(255,255,255,.5);flex:none;transition:transform .18s}.is-open .scope-chevron{transform:rotate(180deg)}
+.scope-label{max-width:170px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.scope-menu{position:absolute;left:0;bottom:calc(100% + 10px);width:min(342px,calc(100vw - 56px));max-height:min(390px,60dvh);display:flex;flex-direction:column;overflow:hidden;padding:7px;border:1px solid rgba(0,229,255,.24);border-radius:15px;background:#0b1318;box-shadow:0 20px 55px rgba(0,0,0,.66),0 0 28px rgba(0,229,255,.07);z-index:40}
+.scope-menu-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 10px 12px;color:rgba(0,229,255,.78);font-size:10px;font-weight:700;letter-spacing:.14em}
+.scope-menu-heading small{color:rgba(255,255,255,.46);font-size:10px;font-weight:500;letter-spacing:0;white-space:nowrap}
+.scope-options{overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:2px;scrollbar-color:rgba(255,255,255,.25) transparent}
+.scope-option{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:40px;padding:9px 10px;border:1px solid transparent;border-radius:9px;background:transparent;color:rgba(255,255,255,.77);font-size:12px;line-height:1.3;text-align:left}
+.scope-option:hover,.scope-option:focus-visible{background:rgba(255,255,255,.075);color:#fff}.scope-option:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.scope-option.is-selected{background:rgba(0,229,255,.1);border-color:rgba(0,229,255,.18);color:#dcfcff;font-weight:600}.scope-option.is-selected svg{color:var(--accent);flex:none}
+.scope-option-name{min-width:0;overflow-wrap:anywhere}
+@media(max-width:600px){.scope-select-wrap{max-width:150px;padding:0}.scope-trigger{gap:5px;height:33px;padding:0 7px}.scope-label{max-width:100px}.scope-menu{left:-32px;width:min(310px,calc(100vw - 54px));max-height:min(350px,55dvh)}}
+.source-pill img{width:25px;height:25px;object-fit:contain;flex:none}
+.ai-avatar img,.thinking-icon img{width:25px;height:25px;object-fit:contain}
+.chat-sidebar{position:fixed;left:auto;right:0;top:0;bottom:0;width:min(320px,88vw);padding-top:28px;border-right:0;border-left:1px solid rgba(255,255,255,.09);transform:translateX(100%);transition:transform .25s ease,visibility .25s;visibility:hidden;z-index:41;box-shadow:-18px 0 50px rgba(0,0,0,.45)}
+.chat-sidebar.is-open,.landing-shell .chat-sidebar.is-open{transform:translateX(0);visibility:visible;z-index:41}
+.sidebar-close,.sidebar-scrim{display:grid}
+.sidebar-scrim{z-index:40}
+.chat-main{margin-left:0}

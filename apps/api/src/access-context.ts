@@ -58,8 +58,9 @@ export class JwtAccessContextProvider implements AccessContextProvider {
       const ids = [...new Set(claims.courses)];
       if (claims.currentCourseId && !ids.includes(claims.currentCourseId)) throw new Error('Current course is not allowed');
       const rows = await db.course.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+      if (rows.length !== ids.length) throw new Error('Token contains an unknown course');
       const names = new Map(rows.map((course) => [course.id, course.name]));
-      return { userId: claims.sub, semester: claims.semester, allowedCourses: ids.map((id) => ({ id, name: names.get(id) ?? id })), currentCourseId: claims.currentCourseId ?? null };
+      return { userId: claims.sub, semester: claims.semester, allowedCourses: ids.map((id) => ({ id, name: names.get(id)! })), currentCourseId: claims.currentCourseId ?? null };
     } catch {
       throw new InvalidAccessTokenError('Invalid or expired AI access token');
     }

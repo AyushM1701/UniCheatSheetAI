@@ -3,9 +3,10 @@ import type { LLMMessage, LLMProvider } from './provider.js';
 /** Deterministic extractive fallback for local development; it does not generate new facts. */
 export class MockLLMProvider implements LLMProvider {
   async generate(messages: LLMMessage[]): Promise<string> {
-    const question = messages.at(-1)?.content ?? '';
+    const current = messages.at(-1)?.content ?? '';
+    const question = current.split('\nUSER QUESTION:\n').at(-1) ?? current;
     if (/^(hi|hello|hey)[!.\s]*$/i.test(question.trim())) return 'Hi! Ask me about your UniCheatSheet course material.';
-    const context = messages.find((message) => message.role === 'system')?.content ?? '';
+    const context = `${messages.find((message) => message.role === 'system')?.content ?? ''}\n${current}`;
     const source = context.match(/\[S1\][\s\S]*?Content:\s*([\s\S]*?)(?=\n\[S\d+\]|\nEND SOURCES|$)/);
     if (!source?.[1]) return 'I could not find relevant information in the indexed UniCheatSheet material.';
     const excerpt = source[1].trim().replace(/\s+/g, ' ').slice(0, 700);

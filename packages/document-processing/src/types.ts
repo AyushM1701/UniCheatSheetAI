@@ -1,6 +1,15 @@
 type ResourceType = 'lecture' | 'pyq' | 'solution' | 'assignment' | 'tutorial' | 'other';
 
-export interface ParsedPage { pageNumber: number; text: string }
+export type ExtractionMethod = 'native' | 'tesseract' | 'paddleocr' | 'trocr' | 'none';
+export interface ParsedPage {
+  pageNumber: number;
+  text: string;
+  extractionMethod?: ExtractionMethod;
+  /** Local ingestion artifact. Never expose this path to API clients. */
+  pageImagePath?: string;
+  ocrConfidence?: number;
+  needsReview?: boolean;
+}
 
 export interface ParsedDocument {
   title: string;

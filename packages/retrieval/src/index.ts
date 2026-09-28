@@ -19,6 +19,9 @@ export interface RetrievalHit {
   similarity: number;
   semanticScore: number;
   score: number;
+  lexicalMatch: boolean;
+  extractionMethod: string;
+  needsReview: boolean;
 }
 
 export async function retrieve(input: RetrieveRequest): Promise<RetrievalHit[]> {
@@ -44,11 +47,12 @@ export async function retrieve(input: RetrieveRequest): Promise<RetrievalHit[]> 
   if (input.resourceTypes) conditions.push(Prisma.sql`d.type IN (${Prisma.join(input.resourceTypes)})`);
   const where = Prisma.join(conditions, ' AND ');
   const lexical = Prisma.sql`to_tsvector('english', c.content) @@ plainto_tsquery('english', ${input.query})`;
-  const rows = await db.$queryRaw<RetrievalHit[]>`
+  const select = Prisma.sql`
     SELECT c.id AS "chunkId", d.id AS "documentId", c.course_id AS "courseId",
       d.title AS document, d.title AS "documentTitle", d.title, d.type, d.source,
       c.page, c.page_start AS "pageStart", c.page_end AS "pageEnd", c.content,
-      d.source_url AS "sourceUrl",
+      d.source_url AS "sourceUrl", COALESCE(c.metadata->>'extractionMethod', 'native') AS "extractionMethod",
+      COALESCE((c.metadata->>'needsReview')::boolean, false) AS "needsReview",
       (1 - (c.embedding <=> ${literal}::vector))::float8 AS similarity,
       (1 - (c.embedding <=> ${literal}::vector))::float8 AS "semanticScore",
       (1 - (c.embedding <=> ${literal}::vector))::float8 AS score
@@ -56,17 +60,27 @@ export async function retrieve(input: RetrieveRequest): Promise<RetrievalHit[]> 
     JOIN academic_documents d ON d.id = c.document_id
     LEFT JOIN source_files sf ON sf.academic_document_id = d.id
     JOIN courses course ON course.id = c.course_id
-    WHERE ${where}
-    ORDER BY CASE WHEN ${lexical} THEN 0 ELSE 1 END,
-      c.embedding <=> ${literal}::vector
-    LIMIT ${input.limit}`;
+    WHERE ${where}`;
+  const candidateLimit = Math.max(input.limit * 4, 24);
+  type RetrievalRow = Omit<RetrievalHit, 'lexicalMatch'>;
+  const [semanticRows, lexicalRows] = await Promise.all([
+    db.$queryRaw<RetrievalRow[]>(Prisma.sql`${select} ORDER BY c.embedding <=> ${literal}::vector LIMIT ${candidateLimit}`),
+    db.$queryRaw<RetrievalRow[]>(Prisma.sql`${select} AND ${lexical} ORDER BY ts_rank_cd(to_tsvector('english', c.content), plainto_tsquery('english', ${input.query})) DESC, c.embedding <=> ${literal}::vector LIMIT ${candidateLimit}`)
+  ]);
   const threshold = Number(process.env.RETRIEVAL_MIN_SCORE ?? 0.30);
   if (!Number.isFinite(threshold) || threshold < -1 || threshold > 1) throw new Error('RETRIEVAL_MIN_SCORE must be between -1 and 1');
-  const matching = await db.$queryRaw<Array<{ id: string }>>`
-    SELECT c.id FROM document_chunks c JOIN academic_documents d ON d.id = c.document_id
-    LEFT JOIN source_files sf ON sf.academic_document_id = d.id
-    JOIN courses course ON course.id = c.course_id
-    WHERE ${where} AND ${lexical} LIMIT ${input.limit}`;
-  const lexicalIds = new Set(matching.map((item) => item.id));
-  return rows.filter((row) => row.similarity >= threshold || lexicalIds.has(row.chunkId));
+  const lexicalOrder = new Map(lexicalRows.map((row, index) => [row.chunkId, index]));
+  const unique = new Map([...semanticRows, ...lexicalRows].map((row) => [row.chunkId, row]));
+  return [...unique.values()]
+    .filter((row) => row.similarity >= threshold || lexicalOrder.has(row.chunkId))
+    .sort((left, right) => {
+      const leftRank = lexicalOrder.get(left.chunkId);
+      const rightRank = lexicalOrder.get(right.chunkId);
+      if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
+      if (leftRank !== undefined) return -1;
+      if (rightRank !== undefined) return 1;
+      return right.similarity - left.similarity;
+    })
+    .slice(0, input.limit)
+    .map((row) => ({ ...row, lexicalMatch: lexicalOrder.has(row.chunkId) }));
 }

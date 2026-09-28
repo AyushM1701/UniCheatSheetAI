@@ -4,7 +4,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const uuid = '[0-9a-fA-F-]{36}';
 function permitted(method: string, path: string): boolean {
-  if (method === 'GET') return path === 'context' || path === 'me/context' || path === 'courses' || path === 'coverage' || path === 'conversations' || new RegExp(`^(conversations|chunks)/${uuid}$`).test(path);
+  if (method === 'GET') return path === 'context' || path === 'me/context' || path === 'courses' || path === 'coverage' || path === 'conversations' || new RegExp(`^(conversations|chunks)/${uuid}$`).test(path) || new RegExp(`^chunks/${uuid}/page-image$`).test(path);
   return method === 'POST' && ['chat', 'chat/stream', 'retrieve'].includes(path);
 }
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }): Promise<Response> {

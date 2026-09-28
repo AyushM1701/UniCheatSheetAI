@@ -1,10 +1,14 @@
 # UniCheatSheet AI
 
+The current code, model, RAG, security, and UI findings are in [PROJECT_AUDIT_2026-09-29.md](PROJECT_AUDIT_2026-09-29.md). Local tests pass, but live Gemini generation was unavailable during that audit; the main website and main Drive remain unconnected.
+
+The local, free OCR and Hostinger deployment split are documented in [deploy/HOSTINGER_HANDOFF.md](deploy/HOSTINGER_HANDOFF.md). OCR runs only during ingestion on this PC; the production API still computes MiniLM query embeddings and must be benchmarked against the real Hostinger quota. The main website and main Drive remain unconnected.
+
 ## Current local prototype
 
 The three user-supplied Drive folders are configured in [catalog/drive-folders.json](catalog/drive-folders.json). Their 10 PDFs are listed in [catalog/folder-resources.json](catalog/folder-resources.json) and cached locally. `catalog/courses.json` contains **provisional AI-side IDs** for Architecture and Digital Electronics; map these to the main website's real course IDs before production. The main Drive and website backend are still separate.
 
-On this PC, the PDF parser can OCR image-only pages when `OCR_ENABLED=true`, `PDFTOPPM_BINARY`, and `OCR_BINARY` point to installed Poppler and Tesseract tools. The 2024 Digital Electronics paper was verified locally: 2 extractable pages and 11 question chunks. After Docker Desktop is running, execute:
+On this PC, the PDF parser can OCR image-only pages when `OCR_ENABLED=true`, `PDFTOPPM_BINARY`, and `OCR_BINARY` point to installed Poppler and Tesseract tools. Set `OCR_HANDWRITING_ENABLED=true` on the ingestion PC to try TrOCR on low-confidence handwriting. Original scanned pages are preserved under `data/processing/page-images`; the source drawer can show them locally. The 2024 Digital Electronics paper was verified locally: 2 extractable pages and 11 question chunks. After Docker Desktop is running, execute:
 
 ```sh
 docker compose up -d postgres
@@ -20,6 +24,8 @@ To rescan and refresh the temporary folders, run `pnpm scan:folders`, then `pnpm
 For an **authoritative complete** main-Drive catalog, `pnpm reconcile:catalog <catalog>` previews currently active AI sources missing from that catalog. Review the preview, set `DRIVE_CATALOG_COMPLETE=true`, then run `pnpm reconcile:catalog <catalog> --apply` to withdraw them from search. Do not apply this to the current 10-file folder catalog: it is only a partial temporary corpus and would hide other valid prototype sources.
 
 The AI API has `GET /v1/ready` for database readiness and `GET /v1/coverage` for allowed-course document counts. `configureAiClient({ tokenProvider, apiBaseUrl })` in the playground client is the integration hook for the future website's short-lived JWT. The website still needs its token endpoint and protected original-resource link flow; details are in [PROJECT_AND_WEBSITE_INTEGRATION.md](PROJECT_AND_WEBSITE_INTEGRATION.md).
+
+The course selector is populated strictly from `GET /v1/context.allowedCourses`, which comes from the development access file locally and the website-signed course grants in production. Indexed PDFs do not create menu entries. The local development access file grants B.Tech Digital Electronics; the B.Sc. paper remains indexed under a separate course ID and is hidden from this local user's menu and searches. The main website must sign only the canonical course IDs that each student may access.
 
 Standalone academic retrieval and grounded chat service. A read-only scanner catalogs Google Drive links from a separate UniCheatSheet website checkout. An ID-based rclone adapter copies selected PDFs into a gitignored cache. Ingestion extracts page text, chunks it, stores vectors in pgvector, and serves ranked chunks through Fastify. Chat uses the indexed chunks and Gemini; queries never contact Drive.
 
@@ -151,7 +157,7 @@ pnpm ingest data/samples/dbms/notes.pdf --course dbms --title "DBMS Notes" --sou
 
 The path command defaults to course `dbms`, type `lecture`, and source `local`. You can also add a local PDF to `catalog/local-resources.json` and run `pnpm ingest [resource-id]`. Reingestion skips unchanged files only when the PDF checksum, embedding provider, and chunk settings all match. PDFs must be local and at most 25 MB; scanned pages need the configured OCR tools.
 
-`CHUNK_SIZE` and `CHUNK_OVERLAP` are approximate token counts, initially 600 and 100. Final chunks are checked against the embedding model's 512-token window and split when needed. `EMBEDDING_PROVIDER=local` runs the all-MiniLM-L6-v2 ONNX model on the local CPU with 384-dimensional normalized vectors. The first run downloads the model into the ignored `data/models/huggingface` cache; subsequent indexing and searches run locally. Reindex after changing chunk settings or upgrading the model. Retrieval combines PostgreSQL full-text matching with cosine similarity. Semantic-only results below `RETRIEVAL_MIN_SCORE` (default 0.30) are omitted. The new ranking needs corpus evaluation once PostgreSQL runs.
+`CHUNK_SIZE` and `CHUNK_OVERLAP` are approximate token counts, initially 600 and 100. Final chunks are checked against the embedding model's 512-token window and split when needed. `EMBEDDING_PROVIDER=local` runs the all-MiniLM-L6-v2 ONNX model on the local CPU with 384-dimensional normalized vectors. The first run downloads the model into the ignored `data/models/huggingface` cache; subsequent indexing and searches run locally. Reindex after changing chunk settings or upgrading the model. Retrieval combines PostgreSQL full-text matching with cosine similarity. Semantic-only results below `RETRIEVAL_MIN_SCORE` (default 0.30) are omitted. Six local retrieval cases pass; a larger labeled production-corpus evaluation remains necessary.
 
 ## Verification
 

@@ -1,8 +1,12 @@
 # UniCheatSheet AI: project guide and main website integration
 
+For the latest implementation review, test results, and remaining model/RAG/UI risks, see [PROJECT_AUDIT_2026-09-29.md](PROJECT_AUDIT_2026-09-29.md). The current six-case retrieval check and eleven database integration tests pass; a live Gemini generation check could not complete during the audit.
+
+For the new offline handwritten-page OCR path and a detailed split between the ingestion PC, Hostinger API, and external PostgreSQL, see [deploy/HOSTINGER_HANDOFF.md](deploy/HOSTINGER_HANDOFF.md). That handoff also lists the secrets to change when moving from this temporary prototype to the main website. The Hostinger plan and 1.1 GB quota have not yet been verified on the actual account.
+
 ## Prototype implementation update (28 September 2026)
 
-The three additional Drive folder IDs supplied by the user are allowlisted in `catalog/drive-folders.json`. `pnpm scan:folders` writes `catalog/folder-resources.json` with 10 provisional PDF mappings. `pnpm sync:drive catalog/folder-resources.json` downloads only those listed IDs through the temporary rclone remote; all 10 files are cached and indexed on this PC. `pnpm db:seed` and `pnpm index:catalog catalog/folder-resources.json` completed after Docker Desktop started. The four-case retrieval evaluation and a fresh test database's 10 integration tests passed.
+The three additional Drive folder IDs supplied by the user are allowlisted in `catalog/drive-folders.json`. `pnpm scan:folders` writes `catalog/folder-resources.json` with 10 provisional PDF mappings. `pnpm sync:drive catalog/folder-resources.json` downloads only those listed IDs through the temporary rclone remote; all 10 files are cached and indexed on this PC. `pnpm db:seed` and `pnpm index:catalog catalog/folder-resources.json` completed after Docker Desktop started. The current six-case retrieval evaluation and an isolated database's 11 integration tests passed.
 
 PDF text extraction now optionally OCRs individual low-text pages with Poppler `pdftoppm` and Tesseract. Exam papers with recognizable Q1/Q2 labels are indexed by question. The scanned 2024 Digital Electronics paper yielded two readable pages and 11 question chunks. `OCR_ENABLED`, `PDFTOPPM_BINARY`, `OCR_BINARY`, and `OCR_LANG` are AI-machine settings. The main website needs none of these tools.
 
@@ -139,6 +143,8 @@ The inspected website checkout is static HTML/CSS/JS, with semester pages and a 
 
 Use the same stable IDs as `catalog/courses.json` and indexed `Course.id` values, for example `dbms`. Maintain a mapping from the website's course records to those IDs. The website should calculate access from its authenticated user, enrollment, purchases/subscriptions, semester, and specialization **on the server**. Send only the resulting list of course IDs to the AI. A semester or specialization label by itself must not grant a course; students' access can differ within the same semester. Decide explicitly whether a student can access older semesters and encode that as course grants.
 
+The B.Tech and B.Sc. Digital Electronics papers currently have separate provisional course IDs (`digital-electronics` and `digital-electronics-bsc`). The local development user is granted only the B.Tech ID, so the selector shows one Digital Electronics entry. Keep those source collections separate unless the authoritative website catalog says they are the same entitlement. The menu reads the signed `allowedCourses` context; it does not infer courses by scanning PDF titles or indexed content.
+
 Store each resource's canonical course ID alongside its Drive ID in the main resource catalog. This same mapping drives both indexing and website authorization. Avoid using display names as security keys; they can change and may be duplicated.
 
 ### B. Add a server-only token endpoint
@@ -147,7 +153,7 @@ Implement an authenticated website route such as `POST /api/ai/session`. It must
 
 1. Read the existing website session from a secure cookie or equivalent and reject anonymous users.
 2. Read current course entitlements from the website database/payment system. Never trust course IDs or payment status supplied by the browser.
-3. Set `sub` to a stable opaque user ID, `semester` to an integer, `courses` to a nonempty array of canonical IDs, and optional `currentCourseId` to an ID within that array.
+3. Set `sub` to a stable opaque user ID, `semester` to the **authenticated student's current semester from the website's user/enrollment record**, `courses` to a nonempty array of canonical IDs, and optional `currentCourseId` to an ID within that array. Do not read semester from a page URL, browser input, or a fixed value in the token-issuing code.
 4. Sign with **RS256** using a private key held only on the website server. Set the exact configured `iss` and `aud`, plus `iat` and `exp` no more than 15 minutes apart. Return the token over HTTPS with `Cache-Control: no-store`.
 5. Return an access-denied response if the student has no eligible courses. The current AI token schema requires at least one course.
 
@@ -166,6 +172,8 @@ Example claims (illustrative values):
 }
 ```
 
+The `3` above is only an example for one student. A different student's token must contain that student's own semester. The AI API verifies the signed token and returns its semester from `GET /v1/me/context`; the AI frontend renders that response. The context response also includes `accountKey`, a SHA-256 fingerprint of the opaque `sub`, so the frontend clears conversation state when two accounts with identical course access use the same tab. Do not display this value as a student identifier. `dev-context.json` supplies a mock semester only while running the disconnected local prototype.
+
 The website keeps the private key; the AI server receives only the corresponding public key via `AI_JWT_PUBLIC_KEY_FILE` or `AI_JWT_PUBLIC_KEY`. The AI verifier checks signature, issuer, audience, lifetime, and claim shape. Rotate keys using a coordinated deployment; the current AI verifier accepts one configured public key, so seamless overlapping rotation would require code support. A revoked purchase can remain represented in an already issued token until it expires (at most 15 minutes); shorten TTL if the business requirement is stricter.
 
 ### C. Add the AI entry point and browser integration
@@ -181,7 +189,7 @@ Load AI view → POST website /api/ai/session (website cookie)
 
 Keep the AI token in memory. On a 401, request a fresh token from the website and retry only where it is safe to do so; show login/access UI if the website session has expired. Do not put tokens in query strings, local storage, HTML source, or analytics events. The website's own session cookie remains scoped to the website; the AI API receives the Bearer token. If direct browser requests are undesirable, add a **website server proxy** that attaches a token and forwards only approved AI routes; that is a separate implementation choice and must still enforce the website session.
 
-The existing standalone playground can supply UI components and its client now accepts a `tokenProvider` adapter, but no website token issuer is connected. If the final interface is hosted at a separate `ai.` subdomain, add a secure login bootstrap from the main website (for example, a one-time server-side exchange) rather than putting a JWT in the navigation URL. If the AI UI is embedded in the main website, adapt the playground components there and call the AI API with the token from `/api/ai/session`. The main website is not modified by this repository today.
+The existing standalone playground can supply UI components and its client now accepts a `tokenProvider` adapter, but no website token issuer is connected. Call `configureAiClient` when the authenticated website session becomes available and again after a login, logout, or enrollment change. The frontend reloads the signed academic context and clears stale chat state when that configuration changes; it also refreshes the semester when the tab regains focus. If the final interface is hosted at a separate `ai.` subdomain, add a secure login bootstrap from the main website (for example, a one-time server-side exchange) rather than putting a JWT in the navigation URL. If the AI UI is embedded in the main website, adapt the playground components there and call the AI API with the token from `/api/ai/session`. The main website is not modified by this repository today.
 
 ### D. Make citations open authorized resources
 

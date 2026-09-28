@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chunkDocument, chunkExamQuestions, cleanText, OcrRequiredError, parseDocument, processDocument } from '../packages/document-processing/src/index.js';
+import { chunkDocument, chunkExamQuestions, cleanText, OcrRequiredError, ocrQuality, parseDocument, processDocument, tesseractConfidence } from '../packages/document-processing/src/index.js';
 
 function blankPdf(): string {
   const objects = [
@@ -19,12 +19,25 @@ function blankPdf(): string {
 }
 
 describe('document processing', () => {
+  it('scores OCR output and ignores Tesseract TSV hierarchy rows', () => {
+    expect(ocrQuality('')).toBe(0);
+    expect(ocrQuality('Normalization removes redundant data from a database table.')).toBeGreaterThan(0.8);
+    expect(tesseractConfidence('level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t100\t100\t-1\t\n5\t1\t1\t1\t1\t1\t0\t0\t20\t10\t90\tHello\n5\t1\t1\t1\t1\t2\t20\t0\t20\t10\t70\tworld')).toBe(0.8);
+  });
   it('indexes exam questions separately with their original page', () => {
     const chunks = chunkExamQuestions([{ pageNumber: 2, text: 'SECTION A\nQl Define a flip-flop and give one application.\nQ2 Explain a two-input NAND gate using CMOS logic.\nQ3 Draw the circuit.' }], 'Digital Electronics 2024');
     expect(chunks).toHaveLength(3);
     expect(chunks[0]).toMatchObject({ pageStart: 2, pageEnd: 2, chunkIndex: 0 });
     expect(chunks[0]?.content).toContain('Question 1:');
     expect(chunks[1]?.content).toContain('NAND gate');
+  });
+  it('keeps exam pages without multiple question labels searchable', () => {
+    const chunks = chunkExamQuestions([
+      { pageNumber: 1, text: 'Instructions and formula sheet: V = IR.' },
+      { pageNumber: 2, text: 'Q1 Explain Ohm law.\nQ2 Define resistance.' }
+    ], 'Physics paper');
+    expect(chunks.map((chunk) => chunk.pageStart)).toEqual([1, 2, 2]);
+    expect(chunks[0]?.content).toContain('V = IR');
   });
   it('cleans lightly and keeps chunk page references and source metadata', async () => {
     expect(cleanText(' Database   Management\n\n\nSystems\0 ')).toBe('Database Management\n\nSystems');

@@ -1,6 +1,11 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { ZodError } from 'zod';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db, Prisma } from '@ucs/database';
 import { retrieve } from '@ucs/retrieval';
 import { retrieveSchema } from '@ucs/shared';
@@ -8,7 +13,15 @@ import { chatSchema } from '@ucs/shared';
 import { chatService, ForbiddenCourseError, InvalidChatScopeError, UnknownConversationError } from '@ucs/ai-core';
 import { createAccessContextProvider, InvalidAccessTokenError, type AccessContextProvider } from './access-context.js';
 
+function providerFailure(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return 'The AI model timed out. Please try again.';
+  if (/^Gemini returned (429|503):/.test(error.message)) return 'The AI model is temporarily busy. Please try again shortly.';
+  return null;
+}
+
 export function buildApp(contextProvider: AccessContextProvider = createAccessContextProvider()) {
+  const projectRoot = fileURLToPath(new URL('../../../', import.meta.url));
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 128 * 1024 });
   const rate = new Map<string, { started: number; count: number }>();
   const active = new Map<string, number>();
@@ -42,6 +55,8 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
     if (error instanceof InvalidChatScopeError) return reply.status(400).send({ error: error.message });
     if (error instanceof UnknownConversationError) return reply.status(404).send({ error: error.message });
     if (error instanceof Error && error.message.startsWith('GEMINI_API_KEY is missing')) return reply.status(503).send({ error: error.message });
+    const unavailable = providerFailure(error);
+    if (unavailable) return reply.status(503).send({ error: unavailable });
     app.log.error(error);
     return reply.status(500).send({ error: 'Internal server error' });
   });
@@ -54,8 +69,8 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
   app.get('/version', async () => ({ version: '0.1.0' }));
   const readContext = async (request: Parameters<AccessContextProvider['getContext']>[0]) => contextProvider.getContext(request);
   const publicContext = async (request: Parameters<AccessContextProvider['getContext']>[0]) => {
-    const { userId: _userId, ...context } = await readContext(request);
-    return context;
+    const { userId, ...context } = await readContext(request);
+    return { ...context, accountKey: createHash('sha256').update(userId).digest('hex') };
   };
   app.get('/v1/context', async (request) => publicContext(request));
   app.get('/v1/me/context', async (request) => publicContext(request));
@@ -93,9 +108,24 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
   });
   app.get('/v1/chunks/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const chunk = await db.documentChunk.findFirst({ where: { id, courseId: { in: (await readContext(request)).allowedCourses.map((course) => course.id) }, document: { visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } }, select: { id: true, content: true, pageStart: true, pageEnd: true, document: { select: { title: true, sourceUrl: true, type: true, course: { select: { id: true, name: true } } } } } });
+    const chunk = await db.documentChunk.findFirst({ where: { id, courseId: { in: (await readContext(request)).allowedCourses.map((course) => course.id) }, document: { visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } }, select: { id: true, content: true, pageStart: true, pageEnd: true, document: { select: { title: true, sourceUrl: true, type: true, metadata: true, course: { select: { id: true, name: true } } } } } });
     if (!chunk) return reply.status(404).send({ error: 'Source not found' });
-    return hideDirectLinks ? { ...chunk, document: { ...chunk.document, sourceUrl: null } } : chunk;
+    const pageExtraction = (chunk.document.metadata as { pageExtraction?: Array<{ pageNumber: number; method: string; needsReview: boolean; hasLocalImage: boolean }> } | null)?.pageExtraction?.find((item) => item.pageNumber === chunk.pageStart);
+    const { metadata: _metadata, ...document } = chunk.document;
+    return { ...chunk, document: { ...document, sourceUrl: hideDirectLinks ? null : document.sourceUrl }, extractionMethod: pageExtraction?.method ?? 'native', needsReview: pageExtraction?.needsReview ?? false, pageImageUrl: process.env.NODE_ENV !== 'production' && pageExtraction?.hasLocalImage ? `/api/ai/chunks/${id}/page-image` : null };
+  });
+  app.get('/v1/chunks/:id/page-image', async (request, reply) => {
+    if (process.env.NODE_ENV === 'production') return reply.status(404).send({ error: 'Page preview unavailable' });
+    const { id } = request.params as { id: string };
+    const context = await readContext(request);
+    const chunk = await db.documentChunk.findFirst({ where: { id, courseId: { in: context.allowedCourses.map((course) => course.id) }, document: { visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } }, select: { pageStart: true, document: { select: { checksum: true, metadata: true } } } });
+    if (!chunk?.pageStart || !/^[0-9a-f]{64}$/.test(chunk.document.checksum)) return reply.status(404).send({ error: 'Page preview unavailable' });
+    const pageExtraction = (chunk.document.metadata as { pageExtraction?: Array<{ pageNumber: number; hasLocalImage: boolean }> } | null)?.pageExtraction?.find((item) => item.pageNumber === chunk.pageStart);
+    if (!pageExtraction?.hasLocalImage) return reply.status(404).send({ error: 'Page preview unavailable' });
+    const imagePath = resolve(projectRoot, process.env.PAGE_IMAGE_DIR ?? 'data/processing/page-images', chunk.document.checksum, `page-${chunk.pageStart}.png`);
+    try { if (!(await stat(imagePath)).isFile()) return reply.status(404).send({ error: 'Page preview unavailable' }); }
+    catch { return reply.status(404).send({ error: 'Page preview unavailable' }); }
+    return reply.header('cache-control', 'private, no-store').type('image/png').send(createReadStream(imagePath));
   });
   app.post('/v1/retrieve', async (request) => {
     const input = retrieveSchema.parse(request.body);
@@ -131,7 +161,7 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
       }
     } catch (error) {
       if (!controller.signal.aborted) app.log.error(error);
-      if (!controller.signal.aborted && !reply.raw.destroyed) reply.raw.write(`event: error\ndata: ${JSON.stringify({ error: 'Chat failed. Please try again.' })}\n\n`);
+      if (!controller.signal.aborted && !reply.raw.destroyed) reply.raw.write(`event: error\ndata: ${JSON.stringify({ error: providerFailure(error) ?? 'Chat failed. Please try again.' })}\n\n`);
     } finally { release(); reply.raw.end(); }
   });
   app.get('/v1/documents/:id', async (request, reply) => {

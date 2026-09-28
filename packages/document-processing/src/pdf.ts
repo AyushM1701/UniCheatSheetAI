@@ -1,24 +1,33 @@
-import { readFile, stat } from 'node:fs/promises';
-import { basename, relative, resolve, sep } from 'node:path';
+import { mkdir, readFile, rename, stat } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { createHash, randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { cleanText } from './cleaner.js';
+import { ocrQuality, recognizePage } from './ocr.js';
 import type { ParsedDocument, ParsedPage } from './types.js';
 
 const exec = promisify(execFile);
-async function ocrPage(filePath: string, pageNumber: number): Promise<string> {
-  const temp = await mkdtemp(resolve(tmpdir(), 'ucs-ocr-'));
-  const relativeTemp = relative(tmpdir(), temp);
-  if (!relativeTemp || relativeTemp === '..' || relativeTemp.startsWith(`..${sep}`)) throw new Error('OCR temporary directory escaped the system temp root');
+const projectRoot = fileURLToPath(new URL('../../../', import.meta.url));
+async function renderOcrPage(filePath: string, checksum: string, pageNumber: number): Promise<string> {
+  const directory = resolve(projectRoot, process.env.PAGE_IMAGE_DIR ?? 'data/processing/page-images', checksum);
+  await mkdir(directory, { recursive: true });
+  const imagePath = join(directory, `page-${pageNumber}.png`);
+  try { if ((await stat(imagePath)).size > 0) return imagePath; } catch { /* Render missing page. */ }
+  const temporaryBase = join(directory, `.page-${pageNumber}-${randomUUID()}`);
+  const dpi = Number(process.env.OCR_RENDER_DPI ?? 275);
+  if (!Number.isInteger(dpi) || dpi < 150 || dpi > 400) throw new Error('OCR_RENDER_DPI must be between 150 and 400');
   try {
-    const output = resolve(temp, 'page');
-    await exec(process.env.PDFTOPPM_BINARY ?? 'pdftoppm', ['-f', String(pageNumber), '-l', String(pageNumber), '-r', '220', '-png', '-singlefile', filePath, output], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
-    const result = await exec(process.env.OCR_BINARY ?? 'tesseract', [`${output}.png`, 'stdout', '-l', process.env.OCR_LANG ?? 'eng'], { timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
-    return cleanText(result.stdout);
-  } finally { await rm(temp, { recursive: true, force: true }); }
+    await exec(process.env.PDFTOPPM_BINARY ?? 'pdftoppm', ['-f', String(pageNumber), '-l', String(pageNumber), '-r', String(dpi), '-png', '-singlefile', filePath, temporaryBase], { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    await rename(`${temporaryBase}.png`, imagePath);
+    return imagePath;
+  } catch (error) {
+    const { rm } = await import('node:fs/promises');
+    await rm(`${temporaryBase}.png`, { force: true });
+    throw error;
+  }
 }
 
 export async function parsePdf(filePath: string): Promise<ParsedDocument> {
@@ -28,6 +37,7 @@ export async function parsePdf(filePath: string): Promise<ParsedDocument> {
   if (file.size > 25 * 1024 * 1024) throw new Error('PDF exceeds the 25 MB processing limit');
   const bytes = new Uint8Array(await readFile(absolutePath));
   if (Buffer.from(bytes.subarray(0, 5)).toString() !== '%PDF-') throw new Error('Invalid PDF header');
+  const checksum = createHash('sha256').update(bytes).digest('hex');
   const task = getDocument({ data: bytes, useSystemFonts: true, disableFontFace: true });
   const pdf = await task.promise;
   const pages: ParsedPage[] = [];
@@ -47,11 +57,21 @@ export async function parsePdf(filePath: string): Promise<ParsedDocument> {
       }
       if (current) lines.push(current);
       let text = cleanText(lines.join('\n'));
-      if (text.trim().length < 50 && process.env.OCR_ENABLED === 'true') {
-        const recovered = await ocrPage(absolutePath, pageNumber);
-        if (recovered.trim().length > text.trim().length) text = recovered;
+      let extractionMethod: ParsedPage['extractionMethod'] = text ? 'native' : 'none';
+      let pageImagePath: string | undefined;
+      let ocrConfidence: number | undefined;
+      let needsReview = false;
+      if ((text.trim().length < 80 || ocrQuality(text) < 0.55) && process.env.OCR_ENABLED === 'true') {
+        pageImagePath = await renderOcrPage(absolutePath, checksum, pageNumber);
+        const recovered = await recognizePage(pageImagePath);
+        if (ocrQuality(recovered.text) > ocrQuality(text) || (text.trim().length < 50 && recovered.text.trim().length > text.trim().length)) {
+          text = recovered.text;
+          extractionMethod = recovered.method;
+          ocrConfidence = recovered.confidence;
+        }
+        needsReview = text.trim().length < 50 || ocrQuality(text) < 0.65 || extractionMethod === 'trocr' || (extractionMethod === 'tesseract' && (ocrConfidence === undefined || ocrConfidence < 0.8));
       }
-      pages.push({ pageNumber, text });
+      pages.push({ pageNumber, text, extractionMethod, ...(pageImagePath && { pageImagePath }), ...(ocrConfidence !== undefined && { ocrConfidence }), ...(needsReview && { needsReview }) });
     }
   } finally { await task.destroy(); }
   return { title: basename(absolutePath), filePath: absolutePath, mimeType: 'application/pdf', pages, metadata: { pageCount: pages.length } };

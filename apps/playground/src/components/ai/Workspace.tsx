@@ -19,7 +19,7 @@ export function Workspace({ initialConversationId }: { initialConversationId?: s
   useEffect(() => { const container = scrollContainer.current; if (container && container.scrollHeight - container.scrollTop - container.clientHeight < 160) bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' }); }, [messages.length, status]);
   const isChat = Boolean(messages.length || initialConversationId);
   return <div className={`app-shell ${isChat ? 'conversation-shell' : 'landing-shell'}`}>
-    <Header isChat={isChat} onMenu={() => setSidebarOpen(true)} />
+    <Header isChat={isChat} menuOpen={sidebarOpen} onMenu={() => setSidebarOpen(true)} />
     <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     {!isChat && <><WelcomeScreen />{error && <p className="landing-error" role="alert">{error}</p>}</>}
     {isChat && <main className="chat-main"><div className="chat-topline"><span className="topline-glow" /> CONVERSATION <span className="topline-divider">/</span> UNI CHEATSHEET</div>

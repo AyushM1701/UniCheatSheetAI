@@ -108,7 +108,7 @@ export class RcloneIdSource {
         const hash = createHash('sha256').update(bytes).digest('hex');
         const documentId = `document-${source.id}`;
         const oldMetadata = existing?.academicDocument?.metadata as { indexingKey?: string } | undefined;
-        const contentCurrent = existing?.academicDocument?.checksum === hash && oldMetadata?.indexingKey === currentIndexingKey();
+        const contentCurrent = existing?.academicDocument?.checksum === hash && oldMetadata?.indexingKey === currentIndexingKey(resource.type);
         if (contentCurrent && existing?.academicDocumentId === documentId && existing.academicDocument?.courseId === resource.courseId) {
           await db.academicDocument.update({ where: { id: documentId }, data: { title: resource.title, type: resource.type, sourceUrl: resource.sourceUrl } });
           result.skipped++;

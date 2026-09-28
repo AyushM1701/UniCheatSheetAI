@@ -4,11 +4,22 @@ import type { UserAcademicContext } from '@/types/chat';
 type TokenProvider = (refresh: boolean) => Promise<string | null>;
 let tokenProvider: TokenProvider | null = null;
 let apiBase = '/api/ai';
+const configurationListeners = new Set<() => void>();
+export class AiApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 /** Called by the hosting website after it has authenticated the student. */
 export function configureAiClient(options: { tokenProvider?: TokenProvider; apiBaseUrl?: string }) {
   tokenProvider = options.tokenProvider ?? null;
   apiBase = (options.apiBaseUrl ?? '/api/ai').replace(/\/$/, '');
+  configurationListeners.forEach((listener) => listener());
+}
+
+/** Re-read academic context when the website supplies or replaces its session. */
+export function onAiClientConfigured(listener: () => void): () => void {
+  configurationListeners.add(listener);
+  return () => { configurationListeners.delete(listener); };
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -25,7 +36,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `Request failed (${response.status})`);
+    throw new AiApiError(body.error ?? `Request failed (${response.status})`, response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -44,13 +55,22 @@ export const ai = {
     const response = await apiFetch('chat/stream', { method: 'POST', body: JSON.stringify(body), signal });
     if (!response.ok) {
       const data = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(data.error ?? `Chat failed (${response.status})`);
+      throw new AiApiError(data.error ?? `Chat failed (${response.status})`, response.status);
     }
     if (!response.body) throw new Error('The chat stream is empty');
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let finished = false;
+    const handleBlock = (block: string) => {
+      const event = block.match(/^event: (.+)$/m)?.[1];
+      const data = block.match(/^data: (.+)$/m)?.[1];
+      if (!event || !data) return;
+      const parsed = JSON.parse(data) as unknown;
+      if (event === 'error') throw new Error((parsed as { error?: string }).error ?? 'Chat failed');
+      onEvent(event, parsed);
+      if (event === 'done') finished = true;
+    };
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -60,15 +80,11 @@ export const ai = {
         while ((boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
           const block = buffer.slice(0, boundary.index).replace(/\r/g, '');
           buffer = buffer.slice(boundary.index + boundary[0].length);
-          const event = block.match(/^event: (.+)$/m)?.[1];
-          const data = block.match(/^data: (.+)$/m)?.[1];
-          if (!event || !data) continue;
-          const parsed = JSON.parse(data) as unknown;
-          if (event === 'error') throw new Error((parsed as { error?: string }).error ?? 'Chat failed');
-          onEvent(event, parsed);
-          if (event === 'done') finished = true;
+          handleBlock(block);
         }
       }
+      buffer += decoder.decode();
+      if (buffer.trim()) handleBlock(buffer.replace(/\r/g, ''));
     } finally { reader.releaseLock(); }
     if (!finished) throw new Error('Chat ended before the answer was complete');
   }

@@ -1,6 +1,8 @@
 [
-  { "query": "Flynn taxonomy", "courseId": "computer-architecture", "expectedTitleContains": "MAY24", "expectedPage": 2 },
-  { "query": "Hall coefficient", "courseId": "physics", "expectedTitleContains": "MAY24", "expectedPage": 2 },
-  { "query": "two input NAND gate CMOS logic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1 },
+  { "query": "Flynn taxonomy", "courseId": "computer-architecture", "expectedTitleContains": "MAY24", "expectedPage": 2, "expectTop": true },
+  { "query": "Hall coefficient", "courseId": "physics", "expectedTitleContains": "MAY24", "expectedPage": 2, "expectTop": true },
+  { "query": "two input NAND gate CMOS logic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
+  { "query": "BCD arithmetic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
+  { "query": "DMA transfer", "courseId": "computer-architecture", "expectedTitleContains": "ComputerSystemArchitecture", "expectedPage": 2, "expectTop": true },
   { "query": "How to bake a chocolate cake", "courseId": "computer-architecture", "expectNoHits": true }
 ]

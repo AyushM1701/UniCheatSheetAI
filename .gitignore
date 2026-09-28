@@ -18,3 +18,4 @@ data/models/
 data/temp/
 data/samples/dbms/notes.pdf
 *.log
+__pycache__/

@@ -14,10 +14,10 @@ process.env.AI_JWT_AUDIENCE = 'unicheatsheet-ai';
 process.env.AI_CORS_ORIGINS = 'https://site.example';
 process.env.LLM_PROVIDER = 'mock';
 
-function token(sub: string, courses = ['dbms'], expiresIn = 600): string {
+function token(sub: string, courses = ['dbms'], expiresIn = 600, semester = 3): string {
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ sub, iss: 'https://site.example', aud: 'unicheatsheet-ai', semester: 3, courses, iat: now, exp: now + expiresIn })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ sub, iss: 'https://site.example', aud: 'unicheatsheet-ai', semester, courses, iat: now, exp: now + expiresIn })).toString('base64url');
   const signature = sign('RSA-SHA256', Buffer.from(`${header}.${payload}`), privateKey).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
@@ -39,6 +39,15 @@ describe('signed AI access', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['access-control-allow-origin']).toBe('https://site.example');
     expect(response.json().allowedCourses[0].id).toBe('dbms');
+    expect(response.json().semester).toBe(3);
+    expect(response.json().accountKey).toMatch(/^[0-9a-f]{64}$/);
+    const bobContext = await app.inject({ method: 'GET', url: '/v1/me/context', headers: { authorization: `Bearer ${token('bob')}` } });
+    expect(bobContext.json().accountKey).not.toBe(response.json().accountKey);
+    const unknownCourse = await app.inject({ method: 'GET', url: '/v1/me/context', headers: { authorization: `Bearer ${token('alice', ['unknown-course-id'])}` } });
+    expect(unknownCourse.statusCode).toBe(401);
+    const fifthSemester = await app.inject({ method: 'GET', url: '/v1/me/context', headers: { authorization: `Bearer ${token('alice', ['dbms'], 600, 5)}` } });
+    expect(fifthSemester.statusCode).toBe(200);
+    expect(fifthSemester.json().semester).toBe(5);
     const preflight = await app.inject({ method: 'OPTIONS', url: '/v1/chat/stream', headers: { origin: 'https://site.example', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,content-type' } });
     expect(preflight.statusCode).toBe(204);
     expect(preflight.headers['access-control-allow-origin']).toBe('https://site.example');

@@ -2,6 +2,13 @@ import type { LLMMessage, LLMProvider } from './provider.js';
 
 type GeminiResponse = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; error?: { message?: string } };
 function responseText(value: GeminiResponse): string { return value.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? ''; }
+function streamText(event: string): string {
+  const data = event.replace(/\r/g, '').split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
+  if (!data || data === '[DONE]') return '';
+  const parsed = JSON.parse(data) as GeminiResponse;
+  if (parsed.error?.message) throw new Error(parsed.error.message);
+  return responseText(parsed);
+}
 
 export class GeminiProvider implements LLMProvider {
   private readonly model = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
@@ -38,15 +45,14 @@ export class GeminiProvider implements LLMProvider {
         buffer += decoder.decode(value, { stream: true });
         let boundary: RegExpExecArray | null;
         while ((boundary = /\r?\n\r?\n/.exec(buffer)) !== null) {
-          const event = buffer.slice(0, boundary.index).replace(/\r/g, ''); buffer = buffer.slice(boundary.index + boundary[0].length);
-          const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('');
-          if (!data) continue;
-          const parsed = JSON.parse(data) as GeminiResponse;
-          if (parsed.error?.message) throw new Error(parsed.error.message);
-          const text = responseText(parsed);
+          const event = buffer.slice(0, boundary.index); buffer = buffer.slice(boundary.index + boundary[0].length);
+          const text = streamText(event);
           if (text) yield text;
         }
       }
+      buffer += decoder.decode();
+      const final = streamText(buffer);
+      if (final) yield final;
     } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
   }
 }
