@@ -29,6 +29,14 @@ export function ocrQuality(text: string): number {
   return Math.round((readable * 0.4 + plausible * 0.3 + length * 0.3) * 100) / 100;
 }
 
+export function nativeTextNeedsOcr(text: string): boolean {
+  if (text.trim().length < 80 || ocrQuality(text) < 0.55) return true;
+  const words = text.split(/\s+/).filter(Boolean);
+  const malformed = words.filter((word) => word.length > 40 || /[\uFFFD\uE000-\uF8FF]/u.test(word)).length;
+  const repeated = new Set(words.map((word) => word.toLowerCase())).size / Math.max(words.length, 1);
+  return malformed / words.length > 0.1 || words.length > 30 && repeated < 0.15;
+}
+
 export function tesseractConfidence(tsv: string): number | undefined {
   const rows = tsv.trim().split(/\r?\n/).slice(1);
   const scores = rows.flatMap((row) => {
@@ -39,16 +47,28 @@ export function tesseractConfidence(tsv: string): number | undefined {
   return scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) / 100 : undefined;
 }
 
+export function tesseractText(tsv: string): string {
+  let previousLine = '';
+  const lines: string[] = [];
+  for (const row of tsv.trim().split(/\r?\n/).slice(1)) {
+    const fields = row.split('\t');
+    if (fields.length < 12 || fields[0] !== '5') continue;
+    const word = fields.slice(11).join('\t').trim();
+    if (!word) continue;
+    const line = fields.slice(1, 5).join(':');
+    if (line !== previousLine) { lines.push(word); previousLine = line; }
+    else lines[lines.length - 1] += ` ${word}`;
+  }
+  return cleanText(lines.join('\n'));
+}
+
 export class TesseractOCR implements OCRProvider {
   async recognize(imagePath: string): Promise<OCRResult> {
     const binary = process.env.OCR_BINARY ?? 'tesseract';
     const language = process.env.OCR_LANG ?? 'eng';
     const options = { timeout: 120000, maxBuffer: 8 * 1024 * 1024 };
-    const [plain, tsv] = await Promise.all([
-      exec(binary, [imagePath, 'stdout', '-l', language], options),
-      exec(binary, [imagePath, 'stdout', '-l', language, 'tsv'], options)
-    ]);
-    return { text: cleanText(plain.stdout), method: 'tesseract', confidence: tesseractConfidence(tsv.stdout) };
+    const { stdout } = await exec(binary, [imagePath, 'stdout', '-l', language, 'tsv'], options);
+    return { text: tesseractText(stdout), method: 'tesseract', confidence: tesseractConfidence(stdout) };
   }
 }
 

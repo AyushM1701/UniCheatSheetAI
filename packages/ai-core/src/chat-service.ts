@@ -54,8 +54,27 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
     if (!saved.allowedCourseIds.every((id) => allowedCourseIds.includes(id))) throw new InvalidChatScopeError('Conversation is outside your current access');
     if (saved?.courseId && !allowedCourseIds.includes(saved.courseId)) throw new InvalidChatScopeError('Conversation is outside your allowed courses');
   }
-  const intent = routeQuery(input.message);
-  const { courseId, courseName } = await resolveCourse(input, allowedCourseIds, userId);
+  const teach = /\b(explain|solve|answer|work through|walk through|teach|derive|demonstrate)\b/i.test(input.message);
+  const intent: QueryIntent = input.mode === 'practice' ? 'practice_generation' : input.mode === 'pyqs' ? teach ? 'academic_rag' : 'resource_search' : input.mode === 'notes' || input.mode === 'solutions' ? 'academic_rag' : routeQuery(input.message);
+  let scopedDocumentId = input.scope?.documentId;
+  let scopedCourseId: string | null = null;
+  if (input.scope?.resourceId) {
+    const resource = await db.resource.findFirst({ where: { id: input.scope.resourceId, active: true, courseId: { in: allowedCourseIds }, academicDocument: { is: { visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } } }, select: { courseId: true, academicDocumentId: true } });
+    if (!resource?.academicDocumentId) throw new InvalidChatScopeError('Resource is unavailable');
+    if (scopedDocumentId && scopedDocumentId !== resource.academicDocumentId) throw new InvalidChatScopeError('Resource and document scope disagree');
+    scopedDocumentId = resource.academicDocumentId;
+    scopedCourseId = resource.courseId;
+  }
+  if (scopedDocumentId) {
+    const document = await db.academicDocument.findFirst({ where: { id: scopedDocumentId, courseId: { in: allowedCourseIds }, visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] }, select: { courseId: true } });
+    if (!document) throw new InvalidChatScopeError('Document is unavailable');
+    if (scopedCourseId && scopedCourseId !== document.courseId) throw new InvalidChatScopeError('Resource and document scope disagree');
+    scopedCourseId = document.courseId;
+  }
+  if (scopedCourseId && input.scope?.courseId && scopedCourseId !== input.scope.courseId) throw new InvalidChatScopeError('Course and document scope disagree');
+  const { courseId, courseName } = scopedCourseId
+    ? { courseId: scopedCourseId, courseName: (await db.course.findUnique({ where: { id: scopedCourseId }, select: { name: true } }))?.name ?? null }
+    : await resolveCourse(input, allowedCourseIds, userId);
   const conversation = await getConversation(input, courseId, input.scope?.semester ?? (courseId ? (await db.course.findUnique({ where: { id: courseId }, select: { semester: true } }))?.semester ?? null : null), userId, allowedCourseIds);
   if (intent === 'general_chat') return { input, intent, courseId, courseName, conversation, history: conversation.history, sources: [], directAnswer: 'Hi! Ask me about your UniCheatSheet course material.' };
   if (intent === 'database_query') {
@@ -67,7 +86,9 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
   }
   const query = retrievalQuery(input.message, courseId, conversation.history);
   const pyqMention = /\b(pyqs?|previous year|past papers?|question papers?)\b/i.test(input.message);
-  const pyqQuery = intent === 'resource_search' || (intent === 'practice_generation' && pyqMention);
+  const pyqQuery = input.mode === 'pyqs' || intent === 'resource_search' || (intent === 'practice_generation' && pyqMention);
+  const modeTypes = input.mode === 'notes' ? ['lecture', 'book', 'syllabus'] as const : input.mode === 'solutions' ? ['solution', 'tutorial', 'assignment'] as const : input.mode === 'pyqs' ? ['pyq'] as const : undefined;
+  const resourceTypes = input.scope?.resourceTypes ?? (modeTypes ? [...modeTypes] : undefined);
   const numericQuestion = input.message.match(/\b(?:question|q|number|no\.?)\s*(\d{1,2})\b/i)?.[1];
   const ordinalQuestion = /\b(?:solve|explain|answer|work through|walk through)\b/i.test(input.message)
     ? ['first', 'second', 'third', 'fourth', 'fifth'].findIndex((word) => new RegExp(`\\b${word}(?:\\s+(?:one|question))?\\b`, 'i').test(input.message)) + 1
@@ -76,8 +97,8 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
   const selectedCitation = selectedNumber > 0 ? conversation.lastCitations[selectedNumber - 1] : undefined;
   const selectedQuestion = selectedCitation ? await loadCitedPyqQuestion(selectedCitation.chunkId, courseId ? [courseId] : allowedCourseIds) : null;
   const hits = selectedQuestion ? [selectedQuestion] : pyqQuery && !query
-    ? await browsePyqQuestions(courseId ? [courseId] : allowedCourseIds, input.scope?.semester)
-    : await retrieve({ query: query || input.message, allowedCourseIds, ...(courseId ? { courseId } : {}), ...(input.scope?.semester ? { semester: input.scope.semester } : {}), ...(pyqQuery ? { type: 'pyq' as const } : {}), limit: 12 });
+    ? await browsePyqQuestions(courseId ? [courseId] : allowedCourseIds, input.scope?.semester, 5, scopedDocumentId)
+    : await retrieve({ query: query || input.message, allowedCourseIds, ...(courseId ? { courseId } : {}), ...(input.scope?.semester ? { semester: input.scope.semester } : {}), ...(scopedDocumentId ? { documentId: scopedDocumentId } : {}), ...(input.scope?.resourceId ? { resourceId: input.scope.resourceId } : {}), ...(pyqQuery ? { type: 'pyq' as const } : resourceTypes ? { resourceTypes } : {}), limit: 12 });
   const sources = buildContext(intent === 'resource_search' ? selectResourceHits(hits) : hits);
   if (intent === 'resource_search') {
     const answer = sources.length ? `Here are ${sources.length} questions from your indexed past papers:\n${sources.map(({ id, hit }, index) => {
@@ -95,7 +116,11 @@ async function complete(prepared: Prepared, rawAnswer: string): Promise<ChatResu
   let answer = validated || noSources;
   if (prepared.sources.length && !prepared.directAnswer && !citations.length) answer = noSources;
   await saveExchange(prepared.conversation, prepared.input.message, answer, citations);
-  return { conversationId: prepared.conversation.id, answer, citations, metadata: { courseId: prepared.courseId, intent: prepared.intent, retrievedChunks: prepared.sources.length, provider: prepared.directAnswer ? 'deterministic' : (process.env.LLM_PROVIDER ?? 'gemini') } };
+  const model = prepared.directAnswer ? null : getLLMProvider().capabilities;
+  const provenance = answer === noSources || /I could not find matching indexed PYQs/i.test(answer) ? 'insufficient'
+    : prepared.intent === 'database_query' || prepared.intent === 'resource_search' && citations.length ? 'grounded'
+      : citations.length ? 'mixed' : 'general';
+  return { conversationId: prepared.conversation.id, answer, citations, metadata: { courseId: prepared.courseId, intent: prepared.intent, retrievedChunks: prepared.sources.length, provider: model?.provider ?? 'deterministic', model: model?.model ?? null, provenance, sourceSupportVerified: provenance === 'grounded' } };
 }
 
 export const chatService = {
@@ -112,14 +137,32 @@ export const chatService = {
     yield { event: 'status', data: { status: 'generating' } };
     let raw = prepared.directAnswer ?? '';
     if (!prepared.directAnswer) {
+      let pending = '';
+      const safeDelta = (text: string) => text.replace(/https?:\/\/\S+/gi, '').replace(/\[(S\d+(?:\s*,\s*S\d+)*)\]/g, (match, group: string) => {
+        if (prepared.sources.length && prepared.sources.every((source) => source.hit.type === 'pyq')) return '';
+        return group.split(/\s*,\s*/).every((id) => prepared.sources.some((source) => source.id === id)) ? match : '';
+      });
       for await (const part of getLLMProvider().stream(buildPrompt({ message: input.message, courseName: prepared.courseName, intent: prepared.intent, sources: prepared.sources, history: prepared.history }), signal)) {
         if (signal?.aborted) return;
         raw += part;
+        pending += part;
+        let boundary = pending.lastIndexOf(' ');
+        const opening = pending.lastIndexOf('[');
+        if (opening > pending.lastIndexOf(']') && boundary >= opening) boundary = pending.lastIndexOf(' ', opening - 1);
+        if (boundary >= 0) {
+          const delta = safeDelta(pending.slice(0, boundary + 1));
+          pending = pending.slice(boundary + 1);
+          if (delta) yield { event: 'token', data: { text: delta } };
+        }
+      }
+      if (pending) {
+        const delta = safeDelta(pending);
+        if (delta) yield { event: 'token', data: { text: delta } };
       }
     }
     if (signal?.aborted) return;
     const result = await complete(prepared, raw);
-    for (const text of result.answer.match(/.{1,240}/gs) ?? []) yield { event: 'token', data: { text } };
+    if (prepared.directAnswer) for (const text of result.answer.match(/.{1,240}/gs) ?? []) yield { event: 'token', data: { text } };
     yield { event: 'done', data: result };
   }
 };

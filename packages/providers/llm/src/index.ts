@@ -4,10 +4,13 @@ import { GeminiProvider } from './gemini.js';
 import type { LLMProvider } from './provider.js';
 export type { LLMMessage, LLMProvider } from './provider.js';
 export { MockLLMProvider, OllamaProvider, GeminiProvider };
+const providers = new Map<string, LLMProvider>();
 export function getLLMProvider(): LLMProvider {
   const name = process.env.LLM_PROVIDER ?? 'gemini';
-  if (name === 'mock') return new MockLLMProvider();
-  if (name === 'ollama') return new OllamaProvider();
-  if (name === 'gemini') return new GeminiProvider();
-  throw new Error(`Unsupported LLM_PROVIDER: ${name}`);
+  const existing = providers.get(name);
+  if (existing) return existing;
+  const provider = name === 'mock' ? new MockLLMProvider() : name === 'ollama' ? new OllamaProvider() : name === 'gemini' ? new GeminiProvider() : null;
+  if (!provider) throw new Error(`Unsupported LLM_PROVIDER: ${name}`);
+  providers.set(name, provider);
+  return provider;
 }

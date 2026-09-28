@@ -6,12 +6,13 @@ import { buildApp } from '../apps/api/src/app.js';
 import { JwtAccessContextProvider } from '../apps/api/src/access-context.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const old = Object.fromEntries(['ACCESS_CONTEXT_PROVIDER', 'AI_JWT_PUBLIC_KEY', 'AI_JWT_ISSUER', 'AI_JWT_AUDIENCE', 'AI_CORS_ORIGINS', 'LLM_PROVIDER'].map((key) => [key, process.env[key]]));
+const old = Object.fromEntries(['ACCESS_CONTEXT_PROVIDER', 'AI_JWT_PUBLIC_KEY', 'AI_JWT_ISSUER', 'AI_JWT_AUDIENCE', 'AI_CORS_ORIGINS', 'AI_ACCOUNT_KEY_SECRET', 'LLM_PROVIDER'].map((key) => [key, process.env[key]]));
 process.env.ACCESS_CONTEXT_PROVIDER = 'jwt';
 process.env.AI_JWT_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 process.env.AI_JWT_ISSUER = 'https://site.example';
 process.env.AI_JWT_AUDIENCE = 'unicheatsheet-ai';
 process.env.AI_CORS_ORIGINS = 'https://site.example';
+process.env.AI_ACCOUNT_KEY_SECRET = 'test-only-stable-secret-with-32-characters';
 process.env.LLM_PROVIDER = 'mock';
 
 function token(sub: string, courses = ['dbms'], expiresIn = 600, semester = 3): string {

@@ -107,6 +107,43 @@ describe('grounded chat API', () => {
     expect(done).not.toBeNull();
     conversations.push(JSON.parse(done![1]!).conversationId);
   });
+  it('lists only entitled indexed resources and enforces document scope', async () => {
+    const listing = await app.inject({ method: 'GET', url: '/v1/resources?courseId=dbms' });
+    expect(listing.statusCode).toBe(200);
+    expect(listing.json().resources.some((resource: { documentId: string }) => resource.documentId === documentId)).toBe(true);
+    const resource = listing.json().resources.find((item: { documentId: string }) => item.documentId === documentId);
+    const scoped = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'Explain normalization from this document', mode: 'notes', scope: { resourceId: resource.id, documentId, courseId: 'dbms' } } });
+    expect(scoped.statusCode).toBe(200);
+    conversations.push(scoped.json().conversationId);
+    expect(scoped.json().citations.every((citation: { documentId: string }) => citation.documentId === documentId)).toBe(true);
+    const wrongCourse = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'Explain normalization', scope: { documentId, courseId: 'physics' } } });
+    expect(wrongCourse.statusCode).toBe(400);
+    const restricted = buildApp({ getContext: async () => ({ userId: 'restricted-resource-test', semester: 3, allowedCourses: [{ id: 'physics', name: 'Physics' }] }) });
+    try {
+      expect((await restricted.inject({ method: 'GET', url: '/v1/resources?courseId=dbms' })).statusCode).toBe(403);
+      expect((await restricted.inject({ method: 'GET', url: `/v1/resources/${encodeURIComponent(resource.id)}` })).statusCode).toBe(404);
+      expect((await restricted.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'Explain normalization', scope: { documentId } } })).statusCode).toBe(400);
+    } finally { await restricted.close(); }
+  });
+  it('lets an account delete its own conversation without deleting another account\'s', async () => {
+    const own = await ask('Explain 3NF from DBMS notes');
+    const other = buildApp({ getContext: async () => ({ userId: 'other-account', semester: 3, allowedCourses: [{ id: 'dbms', name: 'Database Management Systems' }] }) });
+    try {
+      expect((await other.inject({ method: 'DELETE', url: `/v1/conversations/${own.conversationId}` })).statusCode).toBe(404);
+      expect((await app.inject({ method: 'DELETE', url: `/v1/conversations/${own.conversationId}` })).statusCode).toBe(204);
+      expect((await app.inject({ method: 'GET', url: `/v1/conversations/${own.conversationId}` })).statusCode).toBe(404);
+    } finally { await other.close(); }
+  });
+  it('keeps structured PYQ queries within the allowed course set', async () => {
+    const allowed = await app.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics&limit=5' });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({ page: 1, limit: 5 });
+    const restricted = buildApp({ getContext: async () => ({ userId: 'restricted-pyq-test', semester: 3, allowedCourses: [{ id: 'dbms', name: 'Database Management Systems' }] }) });
+    try {
+      expect((await restricted.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics' })).statusCode).toBe(403);
+      expect((await restricted.inject({ method: 'GET', url: '/v1/pyqs/repeated?courseId=digital-electronics' })).statusCode).toBe(403);
+    } finally { await restricted.close(); }
+  });
   it('rejects a browser-selected course outside the server context', async () => {
     const restricted = buildApp({ getContext: async () => ({ userId: 'restricted-test', semester: 3, allowedCourses: [{ id: 'physics', name: 'Physics' }] }) });
     try {

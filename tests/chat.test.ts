@@ -29,6 +29,13 @@ describe('grounded chat rules', () => {
     expect(grouped.answer).not.toContain('S9');
     expect(grouped.citations).toEqual([source.citation]);
   });
+  it('does not cite a past-paper question as evidence for a general teaching explanation', () => {
+    const source = { id: 'S1', hit: { type: 'pyq' } as never, citation: { id: 'S1', chunkId: 'question-1' } as never };
+    const checked = validateCitations('This question appeared in the paper [S1].\n\n### General subject explanation\nAn ADC samples, quantizes, and encodes [S1].', [source]);
+    expect(checked.answer).toContain('paper [S1]');
+    expect(checked.answer).toContain('encodes.');
+    expect(checked.answer).not.toContain('encodes [S1]');
+  });
   it('places source content and recent messages in the prompt', () => {
     const prompt = buildPrompt({ message: 'Explain it', courseName: 'DBMS', intent: 'academic_rag', history: [{ role: 'user', content: 'Earlier question' }], sources: [] });
     expect(prompt[0]?.content).toContain('Never invent a source');

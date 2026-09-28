@@ -37,12 +37,13 @@ export async function scanUniCheatSheet(sourceRoot: string): Promise<RawScanRepo
       const driveFileId = extractDriveFileId(sourceUrl);
       if (!driveFileId) return;
       driveLinks++;
-      if (seen.has(driveFileId)) { duplicateIds++; return; }
-      seen.add(driveFileId);
       const section = $(anchor).closest('section');
       const sectionId = section.attr('id') || undefined;
       const surroundingHeading = section.find('h1,h2,h3,h4,h5,h6').first().text().replace(/\s+/g, ' ').trim() || undefined;
       const title = ($(anchor).find('.hover-text').first().text() || $(anchor).text() || $(anchor).find('img').attr('alt') || 'Untitled resource').replace(/\s+/g, ' ').trim();
+      const referenceKey = [sourcePage, sectionId ?? '', title, driveFileId].join('|');
+      if (seen.has(referenceKey)) { duplicateIds++; return; }
+      seen.add(referenceKey);
       resources.push({ semester, type, title, provider: 'google_drive', driveFileId, sourceUrl, sourcePage: sourcePage.replaceAll('\\', '/'), ...(sectionId && { sectionId }), ...(surroundingHeading && { surroundingHeading }) });
     });
   }

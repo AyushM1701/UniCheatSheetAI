@@ -4,5 +4,12 @@
   { "query": "two input NAND gate CMOS logic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
   { "query": "BCD arithmetic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
   { "query": "DMA transfer", "courseId": "computer-architecture", "expectedTitleContains": "ComputerSystemArchitecture", "expectedPage": 2, "expectTop": true },
+  { "query": "ReRAM Phase Change Memory", "courseId": "computer-architecture", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
+  { "query": "Boolean Algebra reduction", "courseId": "computer-architecture", "expectedTitleContains": "MAY21", "expectedPage": 1, "expectTop": true },
+  { "query": "IEEE single precision 105.625", "courseId": "computer-architecture", "expectedTitleContains": "MAY24", "expectedPage": 1, "expectTop": true },
+  { "query": "Ruby laser pumping mechanism", "courseId": "physics", "expectedTitleContains": "MAY21", "expectedPage": 1, "expectTop": true },
+  { "query": "Herbarium Making class activity", "courseId": "evs-living-lab", "expectedTitleContains": "Class activities", "expectedPage": 2, "expectTop": true },
+  { "query": "MOD-6 synchronous counter JK flip flop", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 2, "expectTop": true },
+  { "query": "What is a DBMS features and advantages", "courseId": "dbms", "expectedTitleContains": "UniCheatSheet DBMS PDF" },
   { "query": "How to bake a chocolate cake", "courseId": "computer-architecture", "expectNoHits": true }
 ]

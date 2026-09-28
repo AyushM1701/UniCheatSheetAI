@@ -20,4 +20,13 @@ describe('Gemini response handling', () => {
     for await (const part of new GeminiProvider().stream([{ role: 'user', content: 'question' }])) parts.push(part);
     expect(parts).toEqual(['first ', 'last']);
   });
+  it('retries a transient upstream failure before an answer starts', async () => {
+    process.env.GEMINI_API_KEY = 'test-only-key';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{"error":"busy"}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{"candidates":[{"content":{"parts":[{"text":"Explained."}]}}]}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await new GeminiProvider().generate([{ role: 'user', content: 'question' }])).toBe('Explained.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

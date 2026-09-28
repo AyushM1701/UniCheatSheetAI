@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyRequest } from 'fastify';
-import { importSPKI, jwtVerify } from 'jose';
+import { createLocalJWKSet, importSPKI, jwtVerify, type JSONWebKeySet } from 'jose';
 import { z } from 'zod';
 import { db } from '@ucs/database';
 
@@ -42,17 +42,21 @@ export class DevAccessContextProvider implements AccessContextProvider {
 
 export class JwtAccessContextProvider implements AccessContextProvider {
   private publicKey?: Promise<Awaited<ReturnType<typeof importSPKI>>>;
+  private keySet?: Promise<ReturnType<typeof createLocalJWKSet>>;
   async getContext(request: FastifyRequest): Promise<UserAcademicContext> {
     const match = /^Bearer ([A-Za-z0-9._~-]+)$/.exec(request.headers.authorization ?? '');
     if (!match) throw new InvalidAccessTokenError('AI access token required');
     const pem = process.env.AI_JWT_PUBLIC_KEY?.replaceAll('\\n', '\n');
     const keyPath = process.env.AI_JWT_PUBLIC_KEY_FILE;
+    const jwksPath = process.env.AI_JWT_JWKS_FILE;
     const issuer = process.env.AI_JWT_ISSUER;
     const audience = process.env.AI_JWT_AUDIENCE;
-    if ((!pem && !keyPath) || !issuer || !audience) throw new Error('JWT access provider is not configured');
-    this.publicKey ??= importSPKI(pem ?? await readFile(keyPath!, 'utf8'), 'RS256');
+    if ((!pem && !keyPath && !jwksPath) || !issuer || !audience) throw new Error('JWT access provider is not configured');
+    if (jwksPath) this.keySet ??= readFile(jwksPath, 'utf8').then((value) => createLocalJWKSet(JSON.parse(value) as JSONWebKeySet));
+    else this.publicKey ??= importSPKI(pem ?? await readFile(keyPath!, 'utf8'), 'RS256');
     try {
-      const { payload } = await jwtVerify(match[1]!, await this.publicKey, { algorithms: ['RS256'], issuer, audience, maxTokenAge: '15m' });
+      const key = jwksPath ? await this.keySet! : await this.publicKey!;
+      const { payload } = await jwtVerify(match[1]!, key, { algorithms: ['RS256'], issuer, audience, maxTokenAge: '15m' });
       const claims = tokenSchema.parse(payload);
       if (claims.exp - claims.iat > 15 * 60) throw new Error('Token lifetime exceeds 15 minutes');
       const ids = [...new Set(claims.courses)];
@@ -71,7 +75,7 @@ export function createAccessContextProvider(): AccessContextProvider {
   const mode = process.env.ACCESS_CONTEXT_PROVIDER ?? 'dev';
   if (mode === 'dev') return new DevAccessContextProvider();
   if (mode === 'jwt') {
-    if ((!process.env.AI_JWT_PUBLIC_KEY && !process.env.AI_JWT_PUBLIC_KEY_FILE) || !process.env.AI_JWT_ISSUER || !process.env.AI_JWT_AUDIENCE) throw new Error('JWT access provider requires public key, issuer, and audience');
+    if ((!process.env.AI_JWT_PUBLIC_KEY && !process.env.AI_JWT_PUBLIC_KEY_FILE && !process.env.AI_JWT_JWKS_FILE) || !process.env.AI_JWT_ISSUER || !process.env.AI_JWT_AUDIENCE) throw new Error('JWT access provider requires public key or JWKS file, issuer, and audience');
     return new JwtAccessContextProvider();
   }
   throw new Error(`Unsupported ACCESS_CONTEXT_PROVIDER: ${mode}`);

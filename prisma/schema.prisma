@@ -8,6 +8,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ResourceType {
+  lecture
+  pyq
+  solution
+  tutorial
+  assignment
+  book
+  syllabus
+  announcement
+  other
+}
+
+enum ContentFormat {
+  typed
+  handwritten
+  mixed
+  scan
+  unknown
+}
+
 model Course {
   id          String             @id
   code        String?            @unique
@@ -18,6 +38,8 @@ model Course {
   documents   AcademicDocument[]
   chunks      DocumentChunk[]
   sourceFiles SourceFile[]
+  resources   Resource[]
+  examQuestions ExamQuestion[]
   @@map("courses")
 }
 
@@ -36,12 +58,42 @@ model AcademicDocument {
   metadata    Json            @default("{}")
   pageCount   Int?            @map("page_count")
   processingStatus String      @default("pending") @map("processing_status")
+  revision    Int             @default(0)
+  pendingChecksum String?     @map("pending_checksum")
+  lastSuccessfulAt DateTime?  @map("last_successful_at")
+  lastFailureAt DateTime?     @map("last_failure_at")
+  lastFailureReason String?   @map("last_failure_reason")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   chunks      DocumentChunk[]
   sourceFile  SourceFile?
+  resources   Resource[]
+  examQuestions ExamQuestion[]
   @@index([courseId, type])
   @@map("academic_documents")
+}
+
+model Resource {
+  id                 String           @id
+  courseId           String           @map("course_id")
+  course             Course           @relation(fields: [courseId], references: [id])
+  resourceType       ResourceType     @map("resource_type")
+  title              String
+  unit               String?
+  sortOrder          Int              @default(0) @map("sort_order")
+  contentFormat      ContentFormat    @default(unknown) @map("content_format")
+  active             Boolean          @default(true)
+  sourceProvider     String?          @map("source_provider")
+  sourceAssetId      String?          @map("source_asset_id")
+  academicDocumentId String?          @map("academic_document_id")
+  academicDocument   AcademicDocument? @relation(fields: [academicDocumentId], references: [id], onDelete: SetNull)
+  metadata           Json             @default("{}")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  @@index([courseId, resourceType, active])
+  @@index([sourceProvider, sourceAssetId])
+  @@index([academicDocumentId])
+  @@map("resources")
 }
 
 model DocumentChunk {
@@ -59,9 +111,35 @@ model DocumentChunk {
   section    String?
   metadata   Json             @default("{}")
   embedding  Unsupported("vector(384)")?
+  examQuestion ExamQuestion?
   @@unique([documentId, chunkIndex])
   @@index([courseId])
   @@map("document_chunks")
+}
+
+model ExamQuestion {
+  id             String @id @default(uuid())
+  documentId     String @map("document_id")
+  document       AcademicDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkId        String @unique @map("chunk_id")
+  chunk          DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  courseId       String @map("course_id")
+  course         Course @relation(fields: [courseId], references: [id])
+  questionNumber String? @map("question_number")
+  subpart        String?
+  marks          Int?
+  examType       String? @map("exam_type")
+  year           Int?
+  session        String?
+  program        String?
+  courseCode     String? @map("course_code")
+  topicTags      String[] @default([]) @map("topic_tags")
+  text           String
+  page           Int?
+  needsReview    Boolean @default(false) @map("needs_review")
+  @@index([courseId, year, examType])
+  @@index([courseId, questionNumber])
+  @@map("exam_questions")
 }
 
 model Conversation {

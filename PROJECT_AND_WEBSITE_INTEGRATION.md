@@ -1,18 +1,33 @@
 # UniCheatSheet AI: project guide and main website integration
 
-For the latest implementation review, test results, and remaining model/RAG/UI risks, see [UniCheatSheetAI_Deep_Audit_Implementation_Plan.md](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) and [architecture_and_souce.md](architecture_and_souce.md). The current six-case retrieval check and eleven database integration tests pass; a live Gemini generation check could not complete during the audit.
+For the full implementation status — what is done, what is remaining, and the exact production checklist — see [UniCheatSheetAI_Deep_Audit_Implementation_Plan.md](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) and [LOCAL_READINESS.md](LOCAL_READINESS.md).
 
-For the new offline handwritten-page OCR path and a detailed split between the ingestion PC, Hostinger API, and external PostgreSQL, see [deploy/HOSTINGER_HANDOFF.md](deploy/HOSTINGER_HANDOFF.md). That handoff also lists the secrets to change when moving from this temporary prototype to the main website. The Hostinger plan and 1.1 GB quota have not yet been verified on the actual account.
+For the ingestion PC / Hostinger runtime split and secrets checklist, see [deploy/HOSTINGER_HANDOFF.md](deploy/HOSTINGER_HANDOFF.md).
 
-## Prototype implementation update (28 September 2026)
+## AI-side implementation status (29 September 2026)
 
-The three additional Drive folder IDs supplied by the user are allowlisted in `catalog/drive-folders.json`. `pnpm scan:folders` writes `catalog/folder-resources.json` with 10 provisional PDF mappings. `pnpm sync:drive catalog/folder-resources.json` downloads only those listed IDs through the temporary rclone remote; all 10 files are cached and indexed on this PC. `pnpm db:seed` and `pnpm index:catalog catalog/folder-resources.json` completed after Docker Desktop started. The current six-case retrieval evaluation and an isolated database's 11 integration tests passed.
+The AI service has advanced substantially beyond an early prototype. The following are **confirmed implemented** on the AI side:
 
-PDF text extraction now optionally OCRs individual low-text pages with Poppler `pdftoppm` and Tesseract. Exam papers with recognizable Q1/Q2 labels are indexed by question. The scanned 2024 Digital Electronics paper yielded two readable pages and 11 question chunks. `OCR_ENABLED`, `PDFTOPPM_BINARY`, `OCR_BINARY`, and `OCR_LANG` are AI-machine settings. The main website needs none of these tools.
+- **Real incremental LLM streaming** — tokens appear in the browser as the model generates them; the validated `done` event replaces provisional text on completion.
+- **Provenance labels** — every answer carries `grounded | mixed | general | insufficient` computed from citation presence and intent.
+- **JWKS multi-key rotation** — `AI_JWT_JWKS_FILE` is supported alongside single-key `AI_JWT_PUBLIC_KEY_FILE`.
+- **HMAC-SHA-256 account key** — the `accountKey` returned in context is `HMAC(secret, userId)`, not a raw hash of the user ID.
+- **RRF-style hybrid retrieval** — semantic and lexical candidates are merged using Reciprocal Rank Fusion scoring; lexical results no longer have unconditional priority.
+- **`Resource` entity** — `prisma/schema.prisma` has a first-class `Resource` model with `ResourceType` and `ContentFormat` enums, `unit`, `sourceAssetId`, and `academicDocumentId`.
+- **`ExamQuestion` structured records** — `questionNumber`, `subpart`, `marks`, `examType`, `year`, `session`, `topicTags`, `needsReview`; populated by `pnpm pyq:backfill`.
+- **`resourceAvailability` in context** — `/v1/me/context` returns which resource types are indexed per allowed course.
+- **`/v1/resources` and `/v1/resources/:id`** — resource browsing endpoints.
+- **Conversation deletion and retention purge** — `DELETE /v1/conversations/:id`, `DELETE /v1/me/conversations`, `scripts/purge-old-conversations.ts`.
+- **SSE hardening** — `X-Accel-Buffering: no`, 15-second keepalive heartbeat, backpressure check.
+- **KaTeX math rendering** — installed and wired in `ChatMessage.tsx`.
+- **26 tests passing** — `pnpm typecheck` → 0 errors; `pnpm test` → 26/26.
 
-The AI frontend now exposes a token-provider adapter; the website can supply its existing authenticated session's short-lived AI JWT and API base URL to that adapter. The website still has to implement the small server-side token issuance contract described below. The real entitlement/course IDs, main Drive rclone remote, production Gemini key, DNS/TLS, and protected original-resource links still need to be configured on their respective machines. The local provisional course mappings must not be treated as production entitlements.
+**Still pending on the main website side** (the AI service is ready and waiting):
+- `POST /api/ai/session` — RS256 JWT issued from real website session + payment/course grants.
+- Canonical production course and resource catalog export.
+- Protected resource opening route `/resources/:resourceId/open`.
 
-The implementation details later in this guide describe the original prototype baseline where they conflict with this dated update. The [deep audit plan](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) tracks the code changes and remaining verification.
+The implementation details later in this guide describe the full integration contract. The [deep audit plan](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) tracks item-by-item implementation status.
 
 This document describes the code in this repository as of 28 September 2026 and the work required to connect it to the real UniCheatSheet website. The AI service is deliberately independent: it can run on a different computer from the website. The website remains responsible for accounts, payments, and course access. The AI service is responsible for finding indexed study material and generating answers grounded in that material.
 
@@ -20,16 +35,19 @@ This document describes the code in this repository as of 28 September 2026 and 
 
 | Area | Current state |
 | --- | --- |
-| Standalone AI interface | Next.js playground at `http://localhost:3000`; runs locally and talks through its `/api/ai` proxy. |
-| AI API | Fastify at `http://127.0.0.1:4000`; retrieval, chat, streaming, history, source details, and health routes exist. |
-| Storage | PostgreSQL with pgvector stores courses, documents, chunks, embeddings, and conversations. |
-| AI generation | Gemini is the configured real model when `GEMINI_API_KEY` is supplied; mock and Ollama modes also exist. |
-| Access control | Local `dev-context.json` mode and an RS256 JWT verifier exist. The real website does **not** issue those JWTs yet. |
-| Drive | A temporary rclone remote and temporary catalog are used for local tests. The main Drive is **not** connected. |
-| Main website | The local checkout at `C:\Users\AYUSH\Downloads\UniCheatSheet-main\UniCheatSheet-main` is mainly static HTML/CSS/JS. Its resource cards currently have `href="#"`, so scanning it yields no Drive files. No login or payment backend was found in the inspected checkout. The deployed website may differ. |
-| Public deployment | Reverse proxy and Cloudflare Tunnel configuration examples exist, but a public hostname and tunnel are not configured on this machine. |
+| Standalone AI interface | Next.js 15 playground at `http://localhost:3000`; dark/cyan UniCheatSheet-styled chat UI. |
+| AI API | Fastify at `http://127.0.0.1:4000`; retrieval, resource browsing, chat/streaming, conversation history, PYQ analytics, source details, health routes. |
+| Storage | PostgreSQL with pgvector: `Course`, `Resource`, `AcademicDocument`, `DocumentChunk`, `ExamQuestion`, `Conversation`, `Message`, `SourceFile`, `IngestionRun`. |
+| AI generation | Real incremental Gemini streaming; retry/backoff on 429/5xx. Mock and Ollama providers available. |
+| Provenance | Every answer carries `grounded/mixed/general/insufficient` computed at response time. |
+| Access control | `dev-context.json` dev mode + JWKS-capable RS256 JWT verifier (single key or JWKS file). HMAC account key. Real website **not yet** issuing JWTs. |
+| Resources | `Resource` model with enums, resource-browsing API, `resourceId` in citations. 112 structured exam question records. |
+| Drive | Temporary rclone remote + 10 cached catalog PDFs. Main Drive **not** connected. |
+| Main website | Resource cards at `href="#"`. No working login/payment backend found in inspected checkout. Deployed website may differ. |
+| Public deployment | `deploy/Caddyfile.example` and `deploy/cloudflared.example.yml` exist. Public hostname not configured. |
+| Tests | 26 tests pass; typecheck: 0 errors. |
 
-The standalone playground is a development interface. Its API client currently does not obtain or attach a website JWT, so it should not be considered a ready production sign-in experience.
+The standalone playground is a development interface. Its API client does not yet obtain or attach a website JWT; it is not a ready production sign-in experience.
 
 ## 2. Architecture and ownership
 
@@ -112,12 +130,18 @@ The website should treat the API as a separate service, for example `https://ai-
 | Route | Use |
 | --- | --- |
 | `GET /v1/health` | Public connectivity check. |
-| `GET /v1/me/context` or `GET /v1/context` | User semester, allowed courses, and current course for the selector. |
+| `GET /v1/me/context` | User semester, allowed courses, `resourceAvailability` per course, and HMAC account key. |
 | `GET /v1/courses` | Courses visible to this token. |
-| `POST /v1/chat` | One complete answer. |
-| `POST /v1/chat/stream` | Stream `status`, `sources`, `token`, `done`, and `error` SSE events. |
-| `GET /v1/conversations` and `GET /v1/conversations/:id` | The user's visible conversation history. |
-| `POST /v1/retrieve` | Direct semantic search. |
+| `POST /v1/chat` | One complete answer with provenance label. |
+| `POST /v1/chat/stream` | Stream `status`, `sources`, `token`, `done`, `error` SSE events (real incremental streaming). |
+| `GET /v1/conversations` and `GET /v1/conversations/:id` | Visible conversation history. |
+| `DELETE /v1/conversations/:id` | Delete a single conversation. |
+| `DELETE /v1/me/conversations` | Delete all conversations for current user. |
+| `GET /v1/resources?courseId=&type=&unit=` | Browse indexed resources for allowed courses. |
+| `GET /v1/resources/:id` | Single resource metadata. |
+| `GET /v1/pyqs/questions?courseId=&year=&examType=` | Structured exam question records. |
+| `GET /v1/pyqs/repeated?courseId=` | Most-repeated question wording with counts. |
+| `POST /v1/retrieve` | Direct semantic search (developer/admin use). |
 | `GET /v1/chunks/:id`, `GET /v1/documents/:id` | Source inspection, subject to token access. |
 
 All routes except health/version need access context. Send `Authorization: Bearer <short-lived-token>` on protected requests. A basic stream request is:

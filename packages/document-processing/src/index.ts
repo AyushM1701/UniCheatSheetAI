@@ -1,6 +1,7 @@
 export { cleanText } from './cleaner.js';
+export { pdfMaxBytes } from './limits.js';
 export { parsePdf } from './pdf.js';
-export { ocrQuality, tesseractConfidence, TesseractOCR, LocalPythonOCR, recognizePage } from './ocr.js';
+export { ocrQuality, nativeTextNeedsOcr, tesseractConfidence, tesseractText, TesseractOCR, LocalPythonOCR, recognizePage } from './ocr.js';
 export type { OCRProvider, OCRResult } from './ocr.js';
 export { chunkPages, chunkDocument } from './chunker.js';
 export { chunkExamQuestions } from './exam-questions.js';

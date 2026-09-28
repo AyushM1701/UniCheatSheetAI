@@ -2,6 +2,7 @@ import type { LLMMessage, LLMProvider } from './provider.js';
 
 /** Deterministic extractive fallback for local development; it does not generate new facts. */
 export class MockLLMProvider implements LLMProvider {
+  readonly capabilities = { provider: 'mock', model: 'extractive-fixture', supportsStreaming: true, maxOutputTokens: 700, timeoutMs: 0 };
   async generate(messages: LLMMessage[]): Promise<string> {
     const current = messages.at(-1)?.content ?? '';
     const question = current.split('\nUSER QUESTION:\n').at(-1) ?? current;

@@ -1,4 +1,4 @@
-import type { ChatResult, ChatScope, Citation, Conversation, ConversationSummary, Course, CoverageItem, SourceDetail } from '@/types/chat';
+import type { AcademicResource, ChatMode, ChatResult, ChatScope, Citation, Conversation, ConversationSummary, Course, CoverageItem, SourceDetail } from '@/types/chat';
 import type { UserAcademicContext } from '@/types/chat';
 
 type TokenProvider = (refresh: boolean) => Promise<string | null>;
@@ -40,11 +40,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
-export interface ChatRequest { message: string; conversationId?: string | null; scope?: Pick<ChatScope, 'semester' | 'courseId'> }
+export interface ChatRequest { message: string; conversationId?: string | null; mode?: ChatMode; scope?: Pick<ChatScope, 'semester' | 'courseId' | 'resourceId' | 'documentId' | 'resourceTypes'> }
 export const ai = {
   getContext: () => request<UserAcademicContext>('context'),
   getCourses: () => request<Course[]>('courses'),
   getCoverage: () => request<CoverageItem[]>('coverage'),
+  getResources: (filters: { courseId?: string; type?: string; category?: 'notes' | 'pyqs' | 'solutions'; page?: number; limit?: number } = {}) => request<{ page: number; limit: number; total: number; resources: AcademicResource[] }>(`resources?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])).toString()}`),
+  getRepeatedPyqs: (courseId: string) => request<{ analyzedQuestions: number; truncated: boolean; total: number; repeated: Array<{ text: string; paperCount: number; appearances: Array<{ chunkId: string; paperTitle: string; year: number | null; page: number | null }> }> }>(`pyqs/repeated?courseId=${encodeURIComponent(courseId)}&limit=10`),
   getConversations: () => request<ConversationSummary[]>('conversations'),
   getConversation: (id: string) => request<Conversation>(`conversations/${encodeURIComponent(id)}`),
   getSource: (id: string) => request<SourceDetail>(`chunks/${encodeURIComponent(id)}`),

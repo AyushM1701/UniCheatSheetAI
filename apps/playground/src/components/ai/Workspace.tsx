@@ -15,8 +15,17 @@ export function Workspace({ initialConversationId }: { initialConversationId?: s
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
+  const followOutput = useRef(true);
   useEffect(() => { if (initialConversationId && initialConversationId !== conversationId && pathname === `/chat/${initialConversationId}` && navigationTarget !== '/') void openConversation(initialConversationId); }, [initialConversationId, conversationId, openConversation, pathname, navigationTarget]);
-  useEffect(() => { const container = scrollContainer.current; if (container && container.scrollHeight - container.scrollTop - container.clientHeight < 160) bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' }); }, [messages.length, status]);
+  useEffect(() => {
+    const container = scrollContainer.current;
+    if (!container) return;
+    const onScroll = () => { followOutput.current = container.scrollHeight - container.scrollTop - container.clientHeight < 160; };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    const observer = new ResizeObserver(() => { if (followOutput.current) container.scrollTop = container.scrollHeight; });
+    if (container.firstElementChild) observer.observe(container.firstElementChild);
+    return () => { observer.disconnect(); container.removeEventListener('scroll', onScroll); };
+  }, [messages.length > 0]);
   const isChat = Boolean(messages.length || initialConversationId);
   return <div className={`app-shell ${isChat ? 'conversation-shell' : 'landing-shell'}`}>
     <Header isChat={isChat} menuOpen={sidebarOpen} onMenu={() => setSidebarOpen(true)} />

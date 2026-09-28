@@ -28,7 +28,7 @@ export function ScopeSelector() {
 
   const close = () => { setOpen(false); trigger.current?.focus(); };
   const choose = (id: string) => {
-    setScope({ ...scope, courseId: id || undefined, semester: undefined });
+    setScope({ ...scope, courseId: id || undefined, semester: undefined, resourceId: undefined, documentId: undefined });
     close();
   };
   const move = (index: number) => options.current[(index + items.length) % items.length]?.focus();

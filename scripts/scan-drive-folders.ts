@@ -31,8 +31,9 @@ for (const folder of config.folders) {
     if (!mapping) { skipped.push({ folder: folder.id, name, reason: 'course mapping required' }); continue; }
     const course = courses.find((item) => item.id === mapping.courseId && item.semester === mapping.semester);
     if (!course) { skipped.push({ folder: folder.id, name, reason: `unknown course or semester: ${mapping.courseId}` }); continue; }
-    if (seen.has(entry.ID)) continue;
-    seen.add(entry.ID);
+    const referenceKey = [folder.id, course.id, mapping.type ?? 'pyq', entry.ID, name].join('|');
+    if (seen.has(referenceKey)) continue;
+    seen.add(referenceKey);
     catalog.push({ semester: mapping.semester, courseId: course.id, courseName: course.name, type: mapping.type ?? 'pyq', title: name.replace(/\.pdf$/i, ''), provider: 'google_drive', driveFileId: entry.ID, sourceUrl: `https://drive.google.com/file/d/${entry.ID}/view`, sourcePage: `drive-folder:${folder.id}` });
   }
 }

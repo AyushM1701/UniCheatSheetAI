@@ -6,7 +6,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { cleanText } from './cleaner.js';
-import { ocrQuality, recognizePage } from './ocr.js';
+import { pdfMaxBytes } from './limits.js';
+import { nativeTextNeedsOcr, ocrQuality, recognizePage } from './ocr.js';
 import type { ParsedDocument, ParsedPage } from './types.js';
 
 const exec = promisify(execFile);
@@ -34,7 +35,7 @@ export async function parsePdf(filePath: string): Promise<ParsedDocument> {
   const absolutePath = resolve(filePath);
   const file = await stat(absolutePath);
   if (!file.isFile() || file.size === 0) throw new Error(`PDF is empty or not a file: ${absolutePath}`);
-  if (file.size > 25 * 1024 * 1024) throw new Error('PDF exceeds the 25 MB processing limit');
+  if (file.size > pdfMaxBytes()) throw new Error('PDF exceeds the configured processing limit');
   const bytes = new Uint8Array(await readFile(absolutePath));
   if (Buffer.from(bytes.subarray(0, 5)).toString() !== '%PDF-') throw new Error('Invalid PDF header');
   const checksum = createHash('sha256').update(bytes).digest('hex');
@@ -61,7 +62,7 @@ export async function parsePdf(filePath: string): Promise<ParsedDocument> {
       let pageImagePath: string | undefined;
       let ocrConfidence: number | undefined;
       let needsReview = false;
-      if ((text.trim().length < 80 || ocrQuality(text) < 0.55) && process.env.OCR_ENABLED === 'true') {
+      if (nativeTextNeedsOcr(text) && process.env.OCR_ENABLED === 'true') {
         pageImagePath = await renderOcrPage(absolutePath, checksum, pageNumber);
         const recovered = await recognizePage(pageImagePath);
         if (ocrQuality(recovered.text) > ocrQuality(text) || (text.trim().length < 50 && recovered.text.trim().length > text.trim().length)) {

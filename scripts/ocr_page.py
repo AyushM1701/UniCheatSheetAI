@@ -34,21 +34,29 @@ def tesseract(image):
     os.close(descriptor)
     try:
         image.save(path)
-        result = subprocess.run([binary, path, "stdout", "-l", language], capture_output=True, text=True, timeout=120, check=True)
         table = subprocess.run([binary, path, "stdout", "-l", language, "tsv"], capture_output=True, text=True, timeout=120, check=True)
     finally:
         os.unlink(path)
     scores = []
+    lines = []
+    previous_line = None
     for row in table.stdout.splitlines()[1:]:
         fields = row.split("\t")
         if len(fields) >= 12 and fields[11].strip():
+            if fields[0] == "5":
+                line_key = tuple(fields[1:5])
+                if line_key != previous_line:
+                    lines.append(fields[11].strip())
+                    previous_line = line_key
+                else:
+                    lines[-1] += " " + fields[11].strip()
             try:
                 score = float(fields[10])
                 if score >= 0:
                     scores.append(score)
             except ValueError:
                 pass
-    return {"method": "tesseract", "text": result.stdout.strip(), "confidence": sum(scores) / len(scores) / 100 if scores else None}
+    return {"method": "tesseract", "text": "\n".join(lines), "confidence": sum(scores) / len(scores) / 100 if scores else None}
 
 
 def paddle(image):

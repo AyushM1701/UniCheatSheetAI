@@ -19,19 +19,19 @@ describe('website Drive catalog', () => {
     expect(extractDriveFileId('#')).toBeNull();
   });
 
-  it('maps semester, course and resource type from site pages and deduplicates IDs', async () => {
+  it('maps semester, course and resource type while preserving distinct logical references', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ucs-site-')); roots.push(root);
     await mkdir(join(root, 'sem3'));
     await writeFile(join(root, 'sem3', 'lecture.html'), '<section id="dbms"><h2>DBMS</h2><a href="https://drive.google.com/file/d/notes123/view"><span class="hover-text">Normalization Notes</span></a><a href="https://drive.google.com/file/d/notes456/view"><span class="hover-text">Normalization Notes</span></a><a href="#">Coming soon</a><a href="https://drive.google.com/drive/folders/folder123">Folder</a></section><section id="unknown"><h2>Unlisted Subject</h2><a href="https://drive.google.com/file/d/unknown123/view">Unknown</a></section>');
     await writeFile(join(root, 'sem3', 'pyqs.html'), '<section><h2>DBMS</h2><a href="https://drive.google.com/open?id=paper123">2025 paper</a><a href="https://drive.google.com/file/d/notes123/view">Repeat</a></section>');
     const report = await scanWebsite(root, [{ id: 'dbms', name: 'Database Management Systems', aliases: ['DBMS'] }]);
-    expect(report).toMatchObject({ filesScanned: 2, driveLinks: 5, duplicateIds: 1 });
-    expect(report.resources.map((item) => item.driveFileId)).toEqual(['notes123', 'notes456', 'paper123']);
+    expect(report).toMatchObject({ filesScanned: 2, driveLinks: 5, duplicateIds: 0 });
+    expect(report.resources.map((item) => item.driveFileId)).toEqual(['notes123', 'notes456', 'paper123', 'notes123']);
     expect(report.resources[0]).toMatchObject({ semester: 3, courseId: 'dbms', type: 'lecture', title: 'Normalization Notes', originFile: 'sem3/lecture.html' });
     expect(report.unresolved).toMatchObject([{ driveFileId: 'unknown123', sectionId: 'unknown', surroundingHeading: 'Unlisted Subject' }]);
     expect(report.unresolved[0]?.courseId).toBeUndefined();
     const raw = await scanUniCheatSheet(root);
-    expect(raw.resources.map((item) => item.driveFileId)).toEqual(['notes123', 'notes456', 'unknown123', 'paper123']);
+    expect(raw.resources.map((item) => item.driveFileId)).toEqual(['notes123', 'notes456', 'unknown123', 'paper123', 'notes123']);
     const output = join(root, 'resources.raw.json');
     await writeResourceCatalog(output, raw.resources);
     expect(JSON.parse(await readFile(output, 'utf8'))).toEqual(raw.resources);

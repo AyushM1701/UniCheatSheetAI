@@ -9,7 +9,8 @@ const option = (name: string) => { const index = flags.indexOf(name); return ind
 const limit = Number(option('--limit') ?? 5);
 const input = retrieveSchema.parse({ query, ...(option('--course') && { courseId: option('--course') }), ...(option('--type') && { type: option('--type') }), ...(option('--source') && { source: option('--source') }), ...(option('--semester') && { semester: Number(option('--semester')) }), limit });
 try {
-  const hits = await retrieve(input);
+  const allowedCourseIds = input.courseId ? [input.courseId] : (await db.course.findMany({ select: { id: true } })).map((course) => course.id);
+  const hits = await retrieve({ ...input, allowedCourseIds });
   console.log(`Query: ${input.query}`);
   if (!hits.length) console.log('No sufficiently relevant material found.');
   for (const [index, hit] of hits.entries()) {

@@ -1,5 +1,8 @@
 import 'dotenv/config';
 import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { db } from '../packages/database/src/index.js';
 import { ingestPdf } from '../packages/ingestion/src/index.js';
@@ -16,6 +19,17 @@ describe('DBMS retrieval against PostgreSQL and pgvector', () => {
     const ingested = await ingestPdf({ documentId: 'dbms-normalization-sample', courseId: 'dbms', title: 'DBMS Normalization Sample Notes', type: 'lecture', source: 'sample', filePath: 'data/samples/dbms-normalization.pdf' });
     expect(ingested.pages).toBe(4);
     expect(ingested.chunks).toBe(4);
+    const beforeFailure = await db.academicDocument.findUniqueOrThrow({ where: { id: 'dbms-normalization-sample' } });
+    const invalidDir = await mkdtemp(join(tmpdir(), 'ucs-failed-revision-'));
+    try {
+      const invalidPath = join(invalidDir, 'broken.pdf');
+      await writeFile(invalidPath, '%PDF-1.4\nnot a valid PDF');
+      await expect(ingestPdf({ documentId: 'dbms-normalization-sample', courseId: 'dbms', title: 'Replacement', type: 'lecture', source: 'sample', filePath: invalidPath })).rejects.toThrow();
+      const afterFailure = await db.academicDocument.findUniqueOrThrow({ where: { id: 'dbms-normalization-sample' } });
+      expect(afterFailure).toMatchObject({ processingStatus: 'indexed', revision: beforeFailure.revision, checksum: beforeFailure.checksum });
+      expect(afterFailure.pendingChecksum).not.toBeNull();
+      expect(afterFailure.lastFailureAt).not.toBeNull();
+    } finally { await rm(invalidDir, { recursive: true, force: true }); }
     const app = buildApp();
     try {
       for (const [query, expectedPage] of [['normalization', 1], ['functional dependency', 3], ['SQL joins', 4]] as const) {

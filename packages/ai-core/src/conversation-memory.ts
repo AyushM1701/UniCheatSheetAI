@@ -5,7 +5,7 @@ import type { Citation, ChatInput } from './types.js';
 export class UnknownConversationError extends Error {}
 export interface ConversationState { id: string; title: string; courseId: string | null; semester: number | null; userId: string; allowedCourseIds: string[]; history: LLMMessage[]; lastCitations: Citation[] }
 export async function getConversation(input: ChatInput, courseId: string | null, semester: number | null, userId: string, allowedCourseIds: string[]): Promise<ConversationState> {
-  const scopeIds = courseId ? [courseId] : allowedCourseIds;
+  const scopeIds = courseId ? [courseId] : [];
   if (!input.conversationId) {
     return { id: randomUUID(), title: input.message.slice(0, 100), courseId, semester, userId, allowedCourseIds: scopeIds, history: [], lastCitations: [] };
   }
@@ -25,8 +25,9 @@ export async function getConversation(input: ChatInput, courseId: string | null,
   return { ...state, lastCitations, history: recent.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.replace(/\[S\d+\]/g, '').slice(0, 4000) })) };
 }
 export async function saveExchange(conversation: ConversationState, question: string, answer: string, citations: Citation[]): Promise<void> {
+  const usedCourseIds = [...new Set([...conversation.allowedCourseIds, ...citations.map((citation) => citation.courseId)])];
   await db.$transaction(async (tx) => {
-    await tx.conversation.upsert({ where: { id: conversation.id }, create: { id: conversation.id, title: conversation.title, courseId: conversation.courseId, semester: conversation.semester, userId: conversation.userId, allowedCourseIds: conversation.allowedCourseIds }, update: { courseId: conversation.courseId, semester: conversation.semester, allowedCourseIds: conversation.allowedCourseIds } });
+    await tx.conversation.upsert({ where: { id: conversation.id }, create: { id: conversation.id, title: conversation.title, courseId: conversation.courseId, semester: conversation.semester, userId: conversation.userId, allowedCourseIds: usedCourseIds }, update: { courseId: conversation.courseId, semester: conversation.semester, allowedCourseIds: usedCourseIds } });
     await tx.message.create({ data: { conversationId: conversation.id, role: 'user', content: question } });
     await tx.message.create({ data: { conversationId: conversation.id, role: 'assistant', content: answer, citations: citations as object[], sources: citations as object[] } });
     await tx.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
