@@ -14,15 +14,16 @@ export function Workspace({ initialConversationId }: { initialConversationId?: s
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
+  const scrollContainer = useRef<HTMLDivElement>(null);
   useEffect(() => { if (initialConversationId && initialConversationId !== conversationId && pathname === `/chat/${initialConversationId}` && navigationTarget !== '/') void openConversation(initialConversationId); }, [initialConversationId, conversationId, openConversation, pathname, navigationTarget]);
-  useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' }); }, [messages.length, status]);
+  useEffect(() => { const container = scrollContainer.current; if (container && container.scrollHeight - container.scrollTop - container.clientHeight < 160) bottom.current?.scrollIntoView({ behavior: 'auto', block: 'end' }); }, [messages.length, status]);
   const isChat = Boolean(messages.length || initialConversationId);
   return <div className={`app-shell ${isChat ? 'conversation-shell' : 'landing-shell'}`}>
     <Header isChat={isChat} onMenu={() => setSidebarOpen(true)} />
     <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     {!isChat && <><WelcomeScreen />{error && <p className="landing-error" role="alert">{error}</p>}</>}
     {isChat && <main className="chat-main"><div className="chat-topline"><span className="topline-glow" /> CONVERSATION <span className="topline-divider">/</span> UNI CHEATSHEET</div>
-      <div className="chat-scroll"><div className="chat-thread">
+      <div className="chat-scroll" ref={scrollContainer}><div className="chat-thread">
         {messages.map((message) => <ChatMessage key={message.id} message={message} onSource={openSource} />)}
         {(status === 'retrieving' || status === 'generating') && !messages.at(-1)?.content && <ThinkingState status={status} sourceCount={sourceCount} />}
         {error && <p className="chat-error" role="alert">{error}</p>}

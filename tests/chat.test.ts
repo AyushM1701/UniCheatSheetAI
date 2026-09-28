@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routeQuery, validateCitations } from '../packages/ai-core/src/index.js';
+import { routeQuery, retrievalQuery, validateCitations } from '../packages/ai-core/src/index.js';
 import { buildPrompt } from '../packages/ai-core/src/prompt-builder.js';
 
 describe('grounded chat rules', () => {
@@ -8,6 +8,10 @@ describe('grounded chat rules', () => {
     expect(routeQuery('Generate 10 practice questions on normalization')).toBe('practice_generation');
     expect(routeQuery('How many DBMS PYQs are available?')).toBe('database_query');
     expect(routeQuery('Hi')).toBe('general_chat');
+    expect(routeQuery('Do not generate practice questions; explain schemas')).toBe('academic_rag');
+    expect(retrievalQuery('Explain SQL ON clauses', 'dbms')).toBe('SQL ON clauses');
+    expect(retrievalQuery('Explain Flynn taxonomy from the 2024 computer architecture paper', 'computer-architecture')).toBe('Flynn taxonomy');
+    expect(retrievalQuery('What is it used for?', 'dbms', [{ role: 'user', content: 'What is a database schema?' }, { role: 'assistant', content: 'A database schema is a blueprint.' }])).toContain('database schema');
   });
   it('accepts only citations assigned to retrieved chunks', () => {
     const source = { id: 'S1', hit: {} as never, citation: { id: 'S1', documentId: 'doc-1', chunkId: 'chunk-1', documentTitle: 'Real Notes', courseId: 'dbms', page: 7, pageStart: 7, pageEnd: 7, sourceUrl: 'https://drive.google.com/file/d/real/view' } };

@@ -10,7 +10,8 @@ export function routeQuery(message: string): QueryIntent {
 export function retrievalQuery(message: string, courseId?: string | null, history: Array<{ role: string; content: string }> = []): string {
   const topic = message.match(/\b(?:say|show|tell|ask)\s+about\s+(.+?)[?.!]*$/i)?.[1] ?? message;
   const course = courseId ? courseId.replace(/-/g, '[\\s-]*') : '';
-  const withoutCourse = course ? topic.replace(new RegExp(`\\b${course}\\b`, 'gi'), ' ') : topic;
+  const withoutSourcePhrase = topic.replace(/\b(?:from|using|in)\s+(?:the\s+)?(?:19|20)\d{2}\b[^?.]{0,100}\b(?:papers?|notes?|material)\b/gi, ' ');
+  const withoutCourse = course ? withoutSourcePhrase.replace(new RegExp(`\\b${course}\\b`, 'gi'), ' ') : withoutSourcePhrase;
   const cleaned = withoutCourse.replace(/\b(give me|show me|find|explain|using the notes?|from my notes?|generate|create|practice|questions?|pyqs?|previous year|papers?|about|for my exam|using unicheatsheet|material)\b/gi, ' ').replace(/\s+/g, ' ').replace(/[?.!]+$/, '').trim();
   const prior = [...history].reverse().find((item) => item.role === 'user' && item.content.trim());
   if (prior && /\b(it|its|this|that|these|those|them)\b/i.test(message) && message.trim().split(/\s+/).length <= 12) {

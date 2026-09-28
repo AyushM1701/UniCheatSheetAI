@@ -3,21 +3,21 @@ import type { LLMMessage, LLMProvider } from './provider.js';
 export class OllamaProvider implements LLMProvider {
   private readonly baseUrl = (process.env.OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434').replace(/\/$/, '');
   private readonly model = process.env.OLLAMA_MODEL ?? 'qwen2.5:3b';
-  private async request(messages: LLMMessage[], stream: boolean): Promise<Response> {
+  private async request(messages: LLMMessage[], stream: boolean, signal?: AbortSignal): Promise<Response> {
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000)),
-      body: JSON.stringify({ model: this.model, messages, stream })
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000))]) : AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000)),
+      body: JSON.stringify({ model: this.model, messages, stream, options: { num_predict: Number(process.env.LLM_MAX_OUTPUT_TOKENS ?? 2048) } })
     });
     if (!response.ok) throw new Error(`Ollama returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
     return response;
   }
-  async generate(messages: LLMMessage[]): Promise<string> {
-    const data = await (await this.request(messages, false)).json() as { message?: { content?: string } };
+  async generate(messages: LLMMessage[], signal?: AbortSignal): Promise<string> {
+    const data = await (await this.request(messages, false, signal)).json() as { message?: { content?: string } };
     return data.message?.content?.trim() ?? '';
   }
-  async *stream(messages: LLMMessage[]): AsyncIterable<string> {
-    const body = (await this.request(messages, true)).body;
+  async *stream(messages: LLMMessage[], signal?: AbortSignal): AsyncIterable<string> {
+    const body = (await this.request(messages, true, signal)).body;
     if (!body) throw new Error('Ollama returned no stream');
     const reader = body.getReader();
     const decoder = new TextDecoder();

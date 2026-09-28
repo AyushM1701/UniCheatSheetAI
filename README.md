@@ -1,5 +1,26 @@
 # UniCheatSheet AI
 
+## Current local prototype
+
+The three user-supplied Drive folders are configured in [catalog/drive-folders.json](catalog/drive-folders.json). Their 10 PDFs are listed in [catalog/folder-resources.json](catalog/folder-resources.json) and cached locally. `catalog/courses.json` contains **provisional AI-side IDs** for Architecture and Digital Electronics; map these to the main website's real course IDs before production. The main Drive and website backend are still separate.
+
+On this PC, the PDF parser can OCR image-only pages when `OCR_ENABLED=true`, `PDFTOPPM_BINARY`, and `OCR_BINARY` point to installed Poppler and Tesseract tools. The 2024 Digital Electronics paper was verified locally: 2 extractable pages and 11 question chunks. After Docker Desktop is running, execute:
+
+```sh
+docker compose up -d postgres
+pnpm db:migrate
+pnpm db:seed
+pnpm index:catalog catalog/folder-resources.json
+pnpm eval:retrieval
+pnpm dev:all
+```
+
+To rescan and refresh the temporary folders, run `pnpm scan:folders`, then `pnpm sync:drive catalog/folder-resources.json`. `DRIVE_LIMIT` controls how many files are checked per run; repeated runs advance through the catalog. `DRIVE_REFRESH_HOURS` controls download freshness. `pnpm index:catalog` indexes cached PDFs into PostgreSQL, using `INDEX_LIMIT` if set. Indexing is a separate step from caching. Run integration tests only with a separate database whose name contains `_test` or `_review`; they intentionally refuse the normal prototype database.
+
+For an **authoritative complete** main-Drive catalog, `pnpm reconcile:catalog <catalog>` previews currently active AI sources missing from that catalog. Review the preview, set `DRIVE_CATALOG_COMPLETE=true`, then run `pnpm reconcile:catalog <catalog> --apply` to withdraw them from search. Do not apply this to the current 10-file folder catalog: it is only a partial temporary corpus and would hide other valid prototype sources.
+
+The AI API has `GET /v1/ready` for database readiness and `GET /v1/coverage` for allowed-course document counts. `configureAiClient({ tokenProvider, apiBaseUrl })` in the playground client is the integration hook for the future website's short-lived JWT. The website still needs its token endpoint and protected original-resource link flow; details are in [PROJECT_AND_WEBSITE_INTEGRATION.md](PROJECT_AND_WEBSITE_INTEGRATION.md).
+
 Standalone academic retrieval and grounded chat service. A read-only scanner catalogs Google Drive links from a separate UniCheatSheet website checkout. An ID-based rclone adapter copies selected PDFs into a gitignored cache. Ingestion extracts page text, chunks it, stores vectors in pgvector, and serves ranked chunks through Fastify. Chat uses the indexed chunks and Gemini; queries never contact Drive.
 
 ## Standalone playground
@@ -16,7 +37,7 @@ pnpm dev:all
 
 Set `GEMINI_API_KEY` in the ignored root `.env` file before chatting. The browser calls the playground's same-origin `/api/ai` proxy, which forwards only supported routes to the API; Gemini credentials stay on the backend. The proxy defaults to `http://127.0.0.1:4000`. To change that later, set `AI_API_URL` in `apps/playground/.env.local` using [apps/playground/.env.example](apps/playground/.env.example) as a template. The main UniCheatSheet website is untouched.
 
-The welcome page has a course selector and suggestion prompts. Sending a question opens a conversation with streaming status and answer text. Source chips open the indexed passage and, in local development mode, its original Drive link where available. Conversations and their course scope reopen from the history menu. The layout adapts to phones. The playground has no login, uploads, or LMS sources yet.
+The welcome page has a course selector and suggestions when indexed material is available. Sending a question opens a conversation with status updates; the validated answer is sent after generation. Source chips open the indexed passage and, in local development mode, its original Drive link where available. Conversations and their course scope reopen from the history menu. The layout adapts to phones. The playground has no login, uploads, or LMS sources yet.
 
 ## Separate HTTPS AI server
 
@@ -86,7 +107,7 @@ pnpm test:chat "Explain sustainable water management" evs-living-lab
 
 The router handles PYQ lookup as a search of indexed `pyq` documents, count questions as database queries, and explicit practice requests as generation from retrieved context. Other academic questions use up to six retrieved chunks. When no relevant chunks pass the score threshold, chat reports insufficient material without asking Gemini to invent an answer. Citation IDs are assigned before generation and mapped to stored source metadata afterward; unknown IDs and model-generated URLs are removed. The backend verifies citation identity and metadata, but cannot prove that every generated sentence follows from its cited passage.
 
-The currently available Drive material is EVS and Physics. The DBMS normalization fixture is synthetic and has no Drive URL; the locally supplied 97-page DBMS PDF also lacks a Drive URL. To get DBMS answers with real Drive links, add and index the actual DBMS Drive resource in the catalog. The prompt labels synthetic fixture material as sample content.
+The temporary Drive catalog includes EVS and Physics, and the new folder catalog adds Architecture, Digital Electronics, and Physics exam papers. The DBMS normalization fixture is synthetic and has no Drive URL; the locally supplied 97-page DBMS PDF also lacks a Drive URL. To get DBMS answers with real Drive links, add and index the actual DBMS Drive resource in the catalog. The prompt labels synthetic fixture material as sample content.
 
 ## Scan the website locally
 
@@ -106,7 +127,7 @@ Change `UNICHEATSHEET_SOURCE_DIR` to the main website checkout, run `pnpm scan:r
 
 For the current temporary Drive test, `.env` points `DRIVE_CATALOG_PATH` at `catalog/temporary-drive-resources.json` and `DRIVE_REMOTE` at the temporary `unicheatsheetAI:` remote. The main Drive is not connected. Run `pnpm sync:drive` to cache only the selected files; this command does not need PostgreSQL or embeddings. It calls `rclone backend copyid` with each cataloged ID and never enumerates or mirrors the Drive. `DRIVE_LIMIT` caps files per run (default 3), and `DRIVE_COURSE_ID` optionally filters one course.
 
-The cache command downloads sequentially to `data/temp`, keeps the file's original extension, and stores it under `data/drive-cache/sem<semester>/<course>/<type>/<title>--<Drive-ID>.<extension>`. The Drive ID prevents same-title collisions. `data/manifests/drive-sync.json` records the original filename, size, download time, and SHA-256 hash. An intact file is skipped; a missing or corrupted file is downloaded again. If a course or title changes, the intact cached file moves to its new folder without a new download. Use a different `DRIVE_MANIFEST_PATH` when switching to the main remote to keep both manifests. The temporary catalog contains three verified PDFs: the EVS Living Lab file and two semester II Physics tutorials selected from the user-provided Drive folder. An exam seating plan in that folder was excluded.
+The cache command downloads sequentially to `data/temp`, keeps the file's original extension, and stores it under `data/drive-cache/sem<semester>/<course>/<type>/<title>--<Drive-ID>.<extension>`. The Drive ID prevents same-title collisions. `data/manifests/drive-sync.json` records the original filename, size, download time, and SHA-256 hash. An intact file is skipped until `DRIVE_REFRESH_HOURS` expires; a missing or corrupted file is downloaded again. If a course or title changes, the intact cached file moves to its new folder without a new download. Use a different `DRIVE_MANIFEST_PATH` when switching to the main remote to keep both manifests. The older temporary catalog contains three verified PDFs; the new allowlisted folder catalog contains 10.
 
 `pnpm drive:sync` is the earlier PDF-only indexing command. It also writes to PostgreSQL and updates retrieval state; keep using `pnpm sync:drive` for this cache-only sprint. DOCX, PPTX, XLSX, and image downloads retain their extensions, but document parsing for those formats is later work.
 
@@ -118,7 +139,7 @@ Run `pnpm test:parse "<cached PDF path>"` to extract text one page at a time, cl
 pnpm test:parse "data/drive-cache/sem2/evs-living-lab/lecture/class-activities-and-group-project--1xpxD6gF8IpERg0jwNQijPpXSy5-rr8DA.pdf"
 ```
 
-The three temporary PDFs produced 5 pages/5 chunks, 15 pages/15 chunks, and 4 pages/5 chunks. Every page had extractable text. The command prints the first three chunks and `READY_FOR_EMBEDDING`. A PDF with fewer than 50 extracted characters reports `OCR_REQUIRED` and does not write a ready artifact. PDF is the only supported parser; DOCX and PPTX parsing and OCR are later work.
+The command prints the first three chunks and `READY_FOR_EMBEDDING`. With `OCR_ENABLED=true` and the required binaries installed, low-text PDF pages are OCRed before chunking. A document with fewer than 50 recovered characters reports `OCR_REQUIRED`. PDF remains the only supported parser; DOCX and PPTX parsing are later work.
 
 ## Ingestion
 
@@ -128,9 +149,9 @@ The three temporary PDFs produced 5 pages/5 chunks, 15 pages/15 chunks, and 4 pa
 pnpm ingest data/samples/dbms/notes.pdf --course dbms --title "DBMS Notes" --source unicheatsheet
 ```
 
-The path command defaults to course `dbms`, type `lecture`, and source `local`. You can also add a local PDF to `catalog/local-resources.json` and run `pnpm ingest [resource-id]`. Reingestion skips unchanged files only when the PDF checksum, embedding provider, and chunk settings all match. PDFs must be local, text based, and at most 25 MB. Scanned PDFs need OCR, which is outside this sprint.
+The path command defaults to course `dbms`, type `lecture`, and source `local`. You can also add a local PDF to `catalog/local-resources.json` and run `pnpm ingest [resource-id]`. Reingestion skips unchanged files only when the PDF checksum, embedding provider, and chunk settings all match. PDFs must be local and at most 25 MB; scanned pages need the configured OCR tools.
 
-`CHUNK_SIZE` and `CHUNK_OVERLAP` are approximate token counts, initially 600 and 100. `EMBEDDING_PROVIDER=local` runs the all-MiniLM-L6-v2 ONNX model on the local CPU with 384-dimensional normalized vectors. The first run downloads the model into the ignored `data/models/huggingface` cache; subsequent indexing and searches run locally. Existing hash vectors were removed by the migration and must be regenerated with `pnpm ingest` or `pnpm index:file`. pgvector uses exact cosine distance; no approximate index or keyword blend is configured. Results below `RETRIEVAL_MIN_SCORE` (default 0.30) are omitted. This threshold was checked against the current small corpus and should be retuned when the main Drive is connected. A relevant passage can still fall below it, so an empty result is not proof the topic is absent.
+`CHUNK_SIZE` and `CHUNK_OVERLAP` are approximate token counts, initially 600 and 100. Final chunks are checked against the embedding model's 512-token window and split when needed. `EMBEDDING_PROVIDER=local` runs the all-MiniLM-L6-v2 ONNX model on the local CPU with 384-dimensional normalized vectors. The first run downloads the model into the ignored `data/models/huggingface` cache; subsequent indexing and searches run locally. Reindex after changing chunk settings or upgrading the model. Retrieval combines PostgreSQL full-text matching with cosine similarity. Semantic-only results below `RETRIEVAL_MIN_SCORE` (default 0.30) are omitted. The new ranking needs corpus evaluation once PostgreSQL runs.
 
 ## Verification
 
@@ -142,6 +163,4 @@ pnpm test:integration
 
 The integration test requires the running PostgreSQL service and `.env`. It checks semantic retrieval, page citations, resource type filters, and unrelated queries against the synthetic fixture. If the untracked supplied PDF is present, it also checks retrieval of its SQL JOIN and integrity constraint sections. Unit tests check website catalog parsing, unresolved course handling, and targeted `copyid` arguments without accessing Drive.
 
-The next milestone is the standalone playground and connection to the main website and Drive.
-
-`pnpm build` currently verifies TypeScript compilation; the supported Sprint 1 runtime command is `pnpm dev`. A deployable compiled bundle is later packaging work.
+`pnpm build` builds the playground and checks the API TypeScript output. `pnpm dev:all` starts both local services. The main website and main Drive connection remain separate deployment work.

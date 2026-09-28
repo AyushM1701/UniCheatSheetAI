@@ -1,8 +1,28 @@
-import type { ChatResult, ChatScope, Citation, Conversation, ConversationSummary, Course, SourceDetail } from '@/types/chat';
+import type { ChatResult, ChatScope, Citation, Conversation, ConversationSummary, Course, CoverageItem, SourceDetail } from '@/types/chat';
 import type { UserAcademicContext } from '@/types/chat';
 
+type TokenProvider = (refresh: boolean) => Promise<string | null>;
+let tokenProvider: TokenProvider | null = null;
+let apiBase = '/api/ai';
+
+/** Called by the hosting website after it has authenticated the student. */
+export function configureAiClient(options: { tokenProvider?: TokenProvider; apiBaseUrl?: string }) {
+  tokenProvider = options.tokenProvider ?? null;
+  apiBase = (options.apiBaseUrl ?? '/api/ai').replace(/\/$/, '');
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const send = async (refresh: boolean) => {
+    const token = await tokenProvider?.(refresh);
+    return fetch(`${apiBase}/${path}`, { ...init, cache: 'no-store', headers: { 'content-type': 'application/json', ...init?.headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+  };
+  let response = await send(false);
+  if (response.status === 401 && tokenProvider) response = await send(true);
+  return response;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/ai/${path}`, { ...init, cache: 'no-store', headers: { 'content-type': 'application/json', ...init?.headers } });
+  const response = await apiFetch(path, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? `Request failed (${response.status})`);
@@ -13,6 +33,7 @@ export interface ChatRequest { message: string; conversationId?: string | null; 
 export const ai = {
   getContext: () => request<UserAcademicContext>('context'),
   getCourses: () => request<Course[]>('courses'),
+  getCoverage: () => request<CoverageItem[]>('coverage'),
   getConversations: () => request<ConversationSummary[]>('conversations'),
   getConversation: (id: string) => request<Conversation>(`conversations/${encodeURIComponent(id)}`),
   getSource: (id: string) => request<SourceDetail>(`chunks/${encodeURIComponent(id)}`),
@@ -20,7 +41,7 @@ export const ai = {
   search: (query: string, courseId?: string) => request<{ query: string; results: unknown[] }>('retrieve', { method: 'POST', body: JSON.stringify({ query, courseId }) }),
   chat: (body: ChatRequest) => request<ChatResult>('chat', { method: 'POST', body: JSON.stringify(body) }),
   async chatStream(body: ChatRequest, onEvent: (event: string, data: unknown) => void, signal?: AbortSignal): Promise<void> {
-    const response = await fetch('/api/ai/chat/stream', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+    const response = await apiFetch('chat/stream', { method: 'POST', body: JSON.stringify(body), signal });
     if (!response.ok) {
       const data = await response.json().catch(() => ({})) as { error?: string };
       throw new Error(data.error ?? `Chat failed (${response.status})`);

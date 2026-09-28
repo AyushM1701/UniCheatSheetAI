@@ -11,7 +11,7 @@ export function ChatMessage({ message, onSource }: { message: UIMessage; onSourc
     <div className="message-heading">{user ? <span className="user-avatar">Y</span> : <span className="ai-avatar"><Sparkles size={15} strokeWidth={1.8} /></span>}<span>{user ? 'You' : 'UniCheatSheet AI'}</span></div>
     <div className="message-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => {
       const match = href?.match(/^#source-(S\d+)$/);
-      if (match) { const citation = message.citations.find((item) => item.id === match[1]); return citation ? <button className="inline-citation" onClick={() => onSource(citation)}>{children}</button> : <span>{children}</span>; }
+      if (match) { const citation = message.citations.find((item) => item.id === match[1]); return citation ? <button className="inline-citation" data-source-chunk-id={citation.chunkId} onClick={() => onSource(citation)}>{children}</button> : <span>{children}</span>; }
       return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
     } }}>{rendered}</ReactMarkdown></div>
     {!user && message.citations.length > 0 && <div className="message-sources"><div className="sources-heading">SOURCES <span>{message.citations.length}</span></div><div className="source-cards">{message.citations.map((citation) => <SourceCard key={citation.id} citation={citation} onClick={() => onSource(citation)} />)}</div></div>}

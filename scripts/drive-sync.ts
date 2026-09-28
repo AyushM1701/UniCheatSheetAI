@@ -15,9 +15,10 @@ const source = new RcloneIdSource({
   remote,
   courseId: process.env.DRIVE_COURSE_ID || undefined,
   cacheDir: process.env.DRIVE_CACHE_DIR ?? 'data/drive-cache',
-  manifestPath: 'data/manifests/drive-manifest.json',
+  manifestPath: process.env.DRIVE_MANIFEST_PATH ?? 'data/manifests/drive-sync.json',
   limit: Number(process.env.DRIVE_LIMIT ?? 1),
-  refreshHours: Number(process.env.DRIVE_REFRESH_HOURS ?? 24)
+  refreshHours: Number(process.env.DRIVE_REFRESH_HOURS ?? 24),
+  reconcileMissing: process.env.DRIVE_CATALOG_COMPLETE === 'true'
 });
 try {
   const result = await source.sync(resources);

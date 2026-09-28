@@ -11,7 +11,7 @@ export async function readManifest(path: string, remote: string): Promise<DriveM
   }
   const parsed = JSON.parse(raw) as Partial<DriveManifest>;
   if (parsed.version !== 1 || typeof parsed.remote !== 'string' || !parsed.resources || typeof parsed.resources !== 'object' || Array.isArray(parsed.resources)) throw new Error(`Invalid Drive manifest: ${path}`);
-  if (parsed.remote !== remote) return { version: 1, remote, resources: {} };
+  if (parsed.remote !== remote) throw new Error(`Drive manifest ${path} belongs to ${parsed.remote}; set a separate DRIVE_MANIFEST_PATH for ${remote}`);
   return parsed as DriveManifest;
 }
 

@@ -17,7 +17,7 @@ describe('Drive catalog lifecycle', () => {
     const root = await mkdtemp(join(tmpdir(), 'ucs-lifecycle-'));
     const calls: string[][] = [];
     await db.course.upsert({ where: { id: 'dbms' }, create: { id: 'dbms', name: 'Database Management Systems', semester: 3, aliases: ['DBMS'] }, update: {} });
-    const source = new RcloneIdSource({ remote: 'ucs-fixture:', cacheDir: join(root, 'cache'), manifestPath: join(root, 'manifest.json'), limit: 1, runner: async (args) => { calls.push(args); await copyFile('data/samples/dbms-normalization.pdf', args[4]!); return ''; } });
+    const source = new RcloneIdSource({ remote: 'ucs-fixture:', cacheDir: join(root, 'cache'), manifestPath: join(root, 'manifest.json'), limit: 1, reconcileMissing: true, runner: async (args) => { calls.push(args); await copyFile('data/samples/dbms-normalization.pdf', args[4]!); return ''; } });
     try {
       expect(await source.sync([resource(ids[0]!)] )).toMatchObject({ downloaded: 1, indexed: 1, failed: 0 });
       expect(await source.sync([resource(ids[0]!)] )).toMatchObject({ downloaded: 0, skipped: 1, failed: 0 });

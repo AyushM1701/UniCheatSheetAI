@@ -13,6 +13,7 @@ export interface IdSyncConfig {
   courseId?: string;
   limit?: number;
   refreshHours?: number;
+  reconcileMissing?: boolean;
   binary?: string;
   runner?: (args: string[]) => Promise<string>;
 }
@@ -45,7 +46,7 @@ export class RcloneIdSource {
     if (!Number.isInteger(limit) || limit < 1) throw new Error('limit must be a positive integer');
     if (!Number.isFinite(refreshHours) || refreshHours < 0) throw new Error('refreshHours must be nonnegative');
     if (config.courseId && !COURSE_ID.test(config.courseId)) throw new Error('Invalid course ID');
-    this.config = { remote: config.remote, cacheDir: resolve(config.cacheDir), manifestPath: resolve(config.manifestPath), courseId: config.courseId, limit, refreshHours, binary: config.binary ?? process.env.RCLONE_BINARY ?? 'rclone' };
+    this.config = { remote: config.remote, cacheDir: resolve(config.cacheDir), manifestPath: resolve(config.manifestPath), courseId: config.courseId, limit, refreshHours, reconcileMissing: config.reconcileMissing ?? false, binary: config.binary ?? process.env.RCLONE_BINARY ?? 'rclone' };
     this.run = config.runner ?? ((args) => runRclone(args, this.config.binary));
   }
 
@@ -77,8 +78,12 @@ export class RcloneIdSource {
       if (extractDriveFileId(resource.sourceUrl) !== resource.driveFileId) throw new Error(`Invalid Drive URL for ${resource.title}`);
       allIds.add(resource.driveFileId);
     }
-    const deactivated = await db.sourceFile.updateMany({ where: { provider: 'google_drive', remoteRoot: this.config.remote, remoteFileId: { notIn: [...allIds] }, active: true }, data: { active: false } });
-    const selected = resources.filter((resource) => !this.config.courseId || resource.courseId === this.config.courseId).slice(0, this.config.limit);
+    const deactivated = this.config.reconcileMissing && !this.config.courseId ? await db.sourceFile.updateMany({ where: { provider: 'google_drive', remoteRoot: this.config.remote, remoteFileId: { notIn: [...allIds] }, active: true }, data: { active: false } }) : { count: 0 };
+    const candidates = resources.filter((resource) => !this.config.courseId || resource.courseId === this.config.courseId);
+    const existingRows = await db.sourceFile.findMany({ where: { provider: 'google_drive', remoteFileId: { in: candidates.map((item) => item.driveFileId) } }, select: { remoteFileId: true, lastCheckedAt: true } });
+    const checked = new Map(existingRows.map((item) => [item.remoteFileId, item.lastCheckedAt?.getTime() ?? 0]));
+    candidates.sort((left, right) => (checked.get(left.driveFileId) ?? 0) - (checked.get(right.driveFileId) ?? 0));
+    const selected = candidates.slice(0, this.config.limit);
     const result: IdSyncResult = { catalogResources: resources.length, selected: selected.length, downloaded: 0, indexed: 0, skipped: 0, deactivated: deactivated.count, failed: 0 };
     for (const resource of selected) {
       const course = await db.course.findUnique({ where: { id: resource.courseId } });
@@ -104,7 +109,7 @@ export class RcloneIdSource {
         const documentId = `document-${source.id}`;
         const oldMetadata = existing?.academicDocument?.metadata as { indexingKey?: string } | undefined;
         const contentCurrent = existing?.academicDocument?.checksum === hash && oldMetadata?.indexingKey === currentIndexingKey();
-        if (contentCurrent && existing?.academicDocumentId === documentId) {
+        if (contentCurrent && existing?.academicDocumentId === documentId && existing.academicDocument?.courseId === resource.courseId) {
           await db.academicDocument.update({ where: { id: documentId }, data: { title: resource.title, type: resource.type, sourceUrl: resource.sourceUrl } });
           result.skipped++;
         } else {

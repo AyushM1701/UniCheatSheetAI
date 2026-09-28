@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { MessageSquareText, Plus, X } from 'lucide-react';
 import { useChatWorkspace } from '@/hooks/useChatWorkspace';
 export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { history, conversationId, newChat } = useChatWorkspace();
+  const { history, conversationId, newChat, coverage } = useChatWorkspace();
   const today = new Date().toDateString();
   const recent = history.filter((item) => new Date(item.updatedAt).toDateString() === today);
   const older = history.filter((item) => new Date(item.updatedAt).toDateString() !== today);
@@ -18,7 +18,7 @@ export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => v
         {recent.length > 0 && <><div className="sidebar-section-title">Today</div>{items(recent)}</>}
         {older.length > 0 && <><div className="sidebar-section-title">Earlier</div>{items(older)}</>}
       </nav>
-      <div className="sidebar-footer"><span className="status-dot" /> Connected to your indexed material</div>
+      <div className="sidebar-footer"><span className="status-dot" /> {coverage.reduce((total, item) => total + item.count, 0)} indexed documents available</div>
     </aside>
   </>;
 }

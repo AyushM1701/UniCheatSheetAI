@@ -2,6 +2,19 @@
 
 Reviewed on 28 September 2026 against the current code and PROJECT_AND_WEBSITE_INTEGRATION.md.
 
+## Implementation update — 28 September 2026
+
+This review records the **original findings** below. The AI repository now includes these improvements:
+
+| Area | Implemented locally | Remaining verification or work |
+| --- | --- | --- |
+| Retrieval and chat | Referential follow-up query expansion; lexical plus vector ranking; tokenizer window checks and reindex key; more conservative intent/count routing; question-level exam chunks; full chunk evidence in prompts; no uncited model answer; old citation IDs stripped from prompt history; four-case retrieval evaluation script. | The four supplied-paper retrieval cases passed live. Claim-level support is still not mechanically proven. |
+| Corpus | Allowlisted scanner for the three supplied folders; 10 PDFs cataloged, cached, and indexed into PostgreSQL; 24-hour cache refresh; advancing limited batches; per-page OCR; active indexed documents preserved when replacement ingestion fails; saved citation excerpts; preview-and-apply reconciliation for a validated complete catalog. | Review provisional course IDs with the real website. Old saved citations without excerpts can still lack source text. Actual withdrawal cannot be exercised until an authoritative complete source export exists. |
+| API and frontend | Per-user local request/concurrency limits, provider timeouts/output cap, database readiness, safer SSE errors, loopback DB binding, test-DB guard, database-filtered 50-item history, browser-to-provider stream abort, history on Home, source dialog focus management, dynamic coverage counts, recoverable composer draft, JWT token-provider adapter. | Cross-instance limits and cancellation of retrieval already in progress remain. The real website must still issue tokens and authorize original-resource links. |
+| Dependencies | PDF.js and Vitest upgraded with unit/build checks. | Audit still reports 3 high advisories in transitive `sharp` and `deepmerge-ts`; review supported upstream updates and actual reachability before public deployment. |
+
+Validation after these edits: 16 unit tests, TypeScript checks, production build, and 10 integration tests in a fresh `ucs_ai_test_20260928` database passed. The 2024 Digital Electronics image PDF parsed through OCR into 2 pages and 11 question chunks. The three new Drive folders produced a 10-file catalog and all 10 files cached and indexed successfully. `pnpm eval:retrieval` passed 4/4 live cases, including Flynn taxonomy and Hall coefficient. A real Gemini answer cited the correct Architecture exam question and acknowledged that a question paper does not supply the explanatory answer; another Gemini request hit the configured 60-second timeout, so provider availability remains a practical limit. The live frontend showed 14 indexed documents, working landing-page history, past-paper search with source citation, source-dialog focus entry/restoration, and a Stop action that cancelled a pending answer while restoring the draft. The main website and main Drive still require separate integration.
+
 **Assessment:** the prototype can generate useful cited answers, but its retrieval reliability, source lifecycle, conversation handling, and production operations need work before connection to the main website. The highest-priority changes can be implemented inside this AI repository. No redesign of UniCheatSheet.com, replacement of its account/payment system, or migration of its database is proposed.
 
 This review changes documentation only. It used an isolated PostgreSQL database, `ucs_ai_review_20260928`, for integration tests and new-paper indexing. Browser checks added an audit conversation to the existing local playground. The three new Drive folders were inspected and copied into the ignored `data/temp/project-review-drive` directory; the normal catalog and index were not changed.
@@ -356,4 +369,3 @@ Do not require the main site to host embeddings, expose its database, move payme
 | 5 — Planned connection | Token-provider adapter, existing JWT issuer contract, course entry point, authorized citation links. | Two-user end-to-end entitlement and expiry tests. | Small integration already planned |
 
 This is a bounded review, not a guarantee that every defect has been found. Production performance, hostile PDF behavior, all model responses, and the separate main website require further testing in their actual environments.
-

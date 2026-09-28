@@ -12,9 +12,11 @@ export async function getConversation(input: ChatInput, courseId: string | null,
   if (!conversation) throw new UnknownConversationError('Conversation not found');
   if (!conversation.allowedCourseIds.every((id) => allowedCourseIds.includes(id))) throw new UnknownConversationError('Conversation is outside your current access');
   const usedIds = [...new Set([...conversation.allowedCourseIds, ...scopeIds])];
+  const changedCourse = conversation.courseId !== courseId;
   if (conversation.courseId !== courseId || conversation.semester !== semester || usedIds.length !== conversation.allowedCourseIds.length) await db.conversation.update({ where: { id: conversation.id }, data: { courseId, semester, allowedCourseIds: usedIds } });
+  if (changedCourse) return { id: conversation.id, history: [] };
   const recent = await db.message.findMany({ where: { conversationId: conversation.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 10 });
-  return { id: conversation.id, history: recent.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 4000) })) };
+  return { id: conversation.id, history: recent.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content.replace(/\[S\d+\]/g, '').slice(0, 4000) })) };
 }
 export async function saveExchange(conversationId: string, question: string, answer: string, citations: Citation[]): Promise<void> {
   await db.$transaction(async (tx) => {

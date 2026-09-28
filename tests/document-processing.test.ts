@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chunkDocument, cleanText, OcrRequiredError, parseDocument, processDocument } from '../packages/document-processing/src/index.js';
+import { chunkDocument, chunkExamQuestions, cleanText, OcrRequiredError, parseDocument, processDocument } from '../packages/document-processing/src/index.js';
 
 function blankPdf(): string {
   const objects = [
@@ -19,6 +19,13 @@ function blankPdf(): string {
 }
 
 describe('document processing', () => {
+  it('indexes exam questions separately with their original page', () => {
+    const chunks = chunkExamQuestions([{ pageNumber: 2, text: 'SECTION A\nQl Define a flip-flop and give one application.\nQ2 Explain a two-input NAND gate using CMOS logic.\nQ3 Draw the circuit.' }], 'Digital Electronics 2024');
+    expect(chunks).toHaveLength(3);
+    expect(chunks[0]).toMatchObject({ pageStart: 2, pageEnd: 2, chunkIndex: 0 });
+    expect(chunks[0]?.content).toContain('Question 1:');
+    expect(chunks[1]?.content).toContain('NAND gate');
+  });
   it('cleans lightly and keeps chunk page references and source metadata', async () => {
     expect(cleanText(' Database   Management\n\n\nSystems\0 ')).toBe('Database Management\n\nSystems');
     const source = { driveFileId: 'file123', sourceUrl: 'https://drive.google.com/file/d/file123/view', semester: 3, courseId: 'dbms', resourceType: 'lecture' as const, documentTitle: 'DBMS sample' };

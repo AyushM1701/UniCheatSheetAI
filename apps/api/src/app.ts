@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { ZodError } from 'zod';
-import { db } from '@ucs/database';
+import { db, Prisma } from '@ucs/database';
 import { retrieve } from '@ucs/retrieval';
 import { retrieveSchema } from '@ucs/shared';
 import { chatSchema } from '@ucs/shared';
@@ -47,6 +47,10 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
   });
   app.get('/health', async () => ({ status: 'ok', service: 'unicheatsheet-ai' }));
   app.get('/v1/health', async () => ({ status: 'ok', service: 'unicheatsheet-ai' }));
+  app.get('/v1/ready', async (_request, reply) => {
+    try { await db.$queryRaw`SELECT 1`; return { status: 'ready', service: 'unicheatsheet-ai' }; }
+    catch { return reply.status(503).send({ status: 'unavailable', service: 'unicheatsheet-ai' }); }
+  });
   app.get('/version', async () => ({ version: '0.1.0' }));
   const readContext = async (request: Parameters<AccessContextProvider['getContext']>[0]) => contextProvider.getContext(request);
   const publicContext = async (request: Parameters<AccessContextProvider['getContext']>[0]) => {
@@ -59,14 +63,25 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
     const context = await readContext(request);
     return db.course.findMany({ where: { id: { in: context.allowedCourses.map((course) => course.id) } }, orderBy: [{ semester: 'asc' }, { name: 'asc' }] });
   });
+  app.get('/v1/coverage', async (request) => {
+    const context = await readContext(request);
+    const rows = await db.academicDocument.groupBy({
+      by: ['courseId', 'type'],
+      where: { courseId: { in: context.allowedCourses.map((course) => course.id) }, visibility: 'global', processingStatus: 'indexed', OR: [{ sourceFile: null }, { sourceFile: { active: true } }] },
+      _count: { _all: true }, _max: { updatedAt: true }
+    });
+    return rows.map((row) => ({ courseId: row.courseId, type: row.type, count: row._count._all, lastIndexedAt: row._max.updatedAt }));
+  });
   app.get('/v1/conversations', async (request) => {
     const context = await readContext(request);
-    const allowed = new Set(context.allowedCourses.map((course) => course.id));
-    const rows = await db.conversation.findMany({
-      where: { userId: context.userId, messages: { some: {} } }, orderBy: { updatedAt: 'desc' },
-      select: { id: true, title: true, createdAt: true, updatedAt: true, allowedCourseIds: true }
-    });
-    return rows.filter((row) => row.allowedCourseIds.every((id) => allowed.has(id))).slice(0, 50).map(({ allowedCourseIds: _ids, ...row }) => row);
+    const ids = context.allowedCourses.map((course) => course.id);
+    return db.$queryRaw<Array<{ id: string; title: string | null; createdAt: Date; updatedAt: Date }>>`
+      SELECT c.id, c.title, c.created_at AS "createdAt", c.updated_at AS "updatedAt"
+      FROM conversations c
+      WHERE c.user_id = ${context.userId}
+        AND c.allowed_course_ids <@ ARRAY[${Prisma.join(ids)}]::text[]
+        AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+      ORDER BY c.updated_at DESC LIMIT 50`;
   });
   app.get('/v1/conversations/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -104,17 +119,19 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
     if (input.scope?.courseId && !context.allowedCourses.some((course) => course.id === input.scope?.courseId)) throw new ForbiddenCourseError('Course is outside your allowed courses');
     const release = claim(context.userId);
     reply.hijack();
+    const controller = new AbortController();
+    reply.raw.once('close', () => controller.abort());
     const origin = request.headers.origin;
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', ...(origin && allowedOrigins.includes(origin) ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {}) });
     try {
-      for await (const item of chatService.stream(input, context.allowedCourses.map((course) => course.id), context.userId)) {
+      for await (const item of chatService.stream(input, context.allowedCourses.map((course) => course.id), context.userId, controller.signal)) {
         if (reply.raw.destroyed) break;
         const data = hideDirectLinks && item.event === 'sources' ? (item.data as Array<{ sourceUrl: string | null }>).map(safeCitation) : hideDirectLinks && item.event === 'done' ? { ...(item.data as object), citations: (item.data as { citations: Array<{ sourceUrl: string | null }> }).citations.map(safeCitation) } : item.data;
         reply.raw.write(`event: ${item.event}\ndata: ${JSON.stringify(data)}\n\n`);
       }
     } catch (error) {
-      app.log.error(error);
-      if (!reply.raw.destroyed) reply.raw.write(`event: error\ndata: ${JSON.stringify({ error: error instanceof Error ? error.message : 'Chat failed' })}\n\n`);
+      if (!controller.signal.aborted) app.log.error(error);
+      if (!controller.signal.aborted && !reply.raw.destroyed) reply.raw.write(`event: error\ndata: ${JSON.stringify({ error: 'Chat failed. Please try again.' })}\n\n`);
     } finally { release(); reply.raw.end(); }
   });
   app.get('/v1/documents/:id', async (request, reply) => {

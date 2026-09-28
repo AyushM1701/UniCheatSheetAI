@@ -18,12 +18,12 @@ export async function indexDocument({ resource, cached, remote }: IndexDocumentI
   const now = new Date();
   const source = await db.sourceFile.upsert({
     where: { provider_remoteFileId: { provider: 'google_drive', remoteFileId: resource.driveFileId } },
-    create: { id: randomUUID(), provider: 'google_drive', remoteRoot: remote, remoteFileId: resource.driveFileId, remotePath: resource.driveFileId, localPath: cached.localPath, name: resource.title, resourceType: resource.type, mimeType: 'application/pdf', size: BigInt(info.size), localHash: cached.checksum, modifiedAt: null, lastSeenAt: now, lastCheckedAt: now, syncStatus: 'cached', courseId: resource.courseId, sourceUrl: resource.sourceUrl, active: true },
-    update: { remoteRoot: remote, remotePath: resource.driveFileId, localPath: cached.localPath, name: resource.title, resourceType: resource.type, mimeType: 'application/pdf', size: BigInt(info.size), localHash: cached.checksum, lastSeenAt: now, lastCheckedAt: now, syncStatus: 'cached', courseId: resource.courseId, sourceUrl: resource.sourceUrl, active: true }
+    create: { id: randomUUID(), provider: 'google_drive', remoteRoot: remote, remoteFileId: resource.driveFileId, remotePath: resource.driveFileId, localPath: cached.localPath, name: resource.title, resourceType: resource.type, mimeType: 'application/pdf', size: BigInt(info.size), localHash: cached.checksum, modifiedAt: null, lastSeenAt: now, lastCheckedAt: now, syncStatus: 'cached', courseId: resource.courseId, sourceUrl: resource.sourceUrl, active: false },
+    update: { remoteRoot: remote, remotePath: resource.driveFileId, localPath: cached.localPath, name: resource.title, resourceType: resource.type, mimeType: 'application/pdf', size: BigInt(info.size), localHash: cached.checksum, lastSeenAt: now, lastCheckedAt: now, syncStatus: 'cached', courseId: resource.courseId, sourceUrl: resource.sourceUrl }
   });
   try {
     const result = await ingestPdf({ filePath: path, documentId: `document-${source.id}`, courseId: resource.courseId, title: resource.title, type: resource.type, source: 'google_drive', sourceUrl: resource.sourceUrl });
-    await db.sourceFile.update({ where: { id: source.id }, data: { academicDocumentId: result.documentId, indexedAt: new Date(), indexStatus: 'indexed' } });
+    await db.sourceFile.update({ where: { id: source.id }, data: { academicDocumentId: result.documentId, indexedAt: new Date(), indexStatus: 'indexed', active: true } });
     return { ...result, sourceFileId: source.id };
   } catch (error) {
     await db.sourceFile.update({ where: { id: source.id }, data: { indexStatus: 'error' } });

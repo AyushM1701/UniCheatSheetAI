@@ -1,5 +1,15 @@
 # UniCheatSheet AI: project guide and main website integration
 
+## Prototype implementation update (28 September 2026)
+
+The three additional Drive folder IDs supplied by the user are allowlisted in `catalog/drive-folders.json`. `pnpm scan:folders` writes `catalog/folder-resources.json` with 10 provisional PDF mappings. `pnpm sync:drive catalog/folder-resources.json` downloads only those listed IDs through the temporary rclone remote; all 10 files are cached and indexed on this PC. `pnpm db:seed` and `pnpm index:catalog catalog/folder-resources.json` completed after Docker Desktop started. The four-case retrieval evaluation and a fresh test database's 10 integration tests passed.
+
+PDF text extraction now optionally OCRs individual low-text pages with Poppler `pdftoppm` and Tesseract. Exam papers with recognizable Q1/Q2 labels are indexed by question. The scanned 2024 Digital Electronics paper yielded two readable pages and 11 question chunks. `OCR_ENABLED`, `PDFTOPPM_BINARY`, `OCR_BINARY`, and `OCR_LANG` are AI-machine settings. The main website needs none of these tools.
+
+The AI frontend now exposes a token-provider adapter; the website can supply its existing authenticated session's short-lived AI JWT and API base URL to that adapter. The website still has to implement the small server-side token issuance contract described below. The real entitlement/course IDs, main Drive rclone remote, production Gemini key, DNS/TLS, and protected original-resource links still need to be configured on their respective machines. The local provisional course mappings must not be treated as production entitlements.
+
+The implementation details later in this guide describe the original prototype baseline where they conflict with this dated update. The review's [implementation update](PROJECT_REVIEW.md) tracks the code changes and remaining verification.
+
 This document describes the code in this repository as of 28 September 2026 and the work required to connect it to the real UniCheatSheet website. The AI service is deliberately independent: it can run on a different computer from the website. The website remains responsible for accounts, payments, and course access. The AI service is responsible for finding indexed study material and generating answers grounded in that material.
 
 ## 1. Current state
@@ -171,7 +181,7 @@ Load AI view → POST website /api/ai/session (website cookie)
 
 Keep the AI token in memory. On a 401, request a fresh token from the website and retry only where it is safe to do so; show login/access UI if the website session has expired. Do not put tokens in query strings, local storage, HTML source, or analytics events. The website's own session cookie remains scoped to the website; the AI API receives the Bearer token. If direct browser requests are undesirable, add a **website server proxy** that attaches a token and forwards only approved AI routes; that is a separate implementation choice and must still enforce the website session.
 
-The existing standalone playground can supply UI components, but its current client has no token handoff. If the final interface is hosted at a separate `ai.` subdomain, add a secure login bootstrap from the main website (for example, a one-time server-side exchange) rather than putting a JWT in the navigation URL. If the AI UI is embedded in the main website, adapt the playground components there and call the AI API with the token from `/api/ai/session`. The main website is not modified by this repository today.
+The existing standalone playground can supply UI components and its client now accepts a `tokenProvider` adapter, but no website token issuer is connected. If the final interface is hosted at a separate `ai.` subdomain, add a secure login bootstrap from the main website (for example, a one-time server-side exchange) rather than putting a JWT in the navigation URL. If the AI UI is embedded in the main website, adapt the playground components there and call the AI API with the token from `/api/ai/session`. The main website is not modified by this repository today.
 
 ### D. Make citations open authorized resources
 

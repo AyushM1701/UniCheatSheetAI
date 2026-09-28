@@ -5,7 +5,7 @@ function responseText(value: GeminiResponse): string { return value.candidates?.
 
 export class GeminiProvider implements LLMProvider {
   private readonly model = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
-  private async request(messages: LLMMessage[], stream: boolean): Promise<Response> {
+  private async request(messages: LLMMessage[], stream: boolean, signal?: AbortSignal): Promise<Response> {
     const key = process.env.GEMINI_API_KEY;
     if (!key) throw new Error('GEMINI_API_KEY is missing; set it in .env');
     const system = messages.filter((message) => message.role === 'system').map((message) => message.content).join('\n');
@@ -13,20 +13,20 @@ export class GeminiProvider implements LLMProvider {
     const method = stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:${method}`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000)),
-      body: JSON.stringify({ system_instruction: { parts: [{ text: system }] }, contents })
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000))]) : AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? 60000)),
+      body: JSON.stringify({ system_instruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: Number(process.env.LLM_MAX_OUTPUT_TOKENS ?? 2048) } })
     });
     if (!response.ok) throw new Error(`Gemini returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
     return response;
   }
-  async generate(messages: LLMMessage[]): Promise<string> {
-    const result = await (await this.request(messages, false)).json() as GeminiResponse;
+  async generate(messages: LLMMessage[], signal?: AbortSignal): Promise<string> {
+    const result = await (await this.request(messages, false, signal)).json() as GeminiResponse;
     const text = responseText(result).trim();
     if (!text) throw new Error('Gemini returned an empty answer');
     return text;
   }
-  async *stream(messages: LLMMessage[]): AsyncIterable<string> {
-    const body = (await this.request(messages, true)).body;
+  async *stream(messages: LLMMessage[], signal?: AbortSignal): AsyncIterable<string> {
+    const body = (await this.request(messages, true, signal)).body;
     if (!body) throw new Error('Gemini returned no stream');
     const reader = body.getReader();
     const decoder = new TextDecoder();

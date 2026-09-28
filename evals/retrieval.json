@@ -1,0 +1,6 @@
+[
+  { "query": "Flynn taxonomy", "courseId": "computer-architecture", "expectedTitleContains": "MAY24", "expectedPage": 2 },
+  { "query": "Hall coefficient", "courseId": "physics", "expectedTitleContains": "MAY24", "expectedPage": 2 },
+  { "query": "two input NAND gate CMOS logic", "courseId": "digital-electronics", "expectedTitleContains": "MAY24", "expectedPage": 1 },
+  { "query": "How to bake a chocolate cake", "courseId": "computer-architecture", "expectNoHits": true }
+]

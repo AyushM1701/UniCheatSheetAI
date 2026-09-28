@@ -51,7 +51,10 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
   const hits = await retrieve({ query: retrievalQuery(input.message, courseId, conversation.history), allowedCourseIds, ...(courseId ? { courseId } : {}), ...(input.scope?.semester ? { semester: input.scope.semester } : {}), ...(intent === 'resource_search' ? { type: 'pyq' as const } : {}), limit: 12 });
   const sources = buildContext(hits);
   if (intent === 'resource_search') {
-    const answer = sources.length ? `I found these indexed PYQ passages:\n${sources.map(({ id, hit }) => `- ${hit.documentTitle}${hit.page ? `, page ${hit.page}` : ''} [${id}]`).join('\n')}` : 'I could not find matching indexed PYQs. I have not generated any questions.';
+    const answer = sources.length ? `I found these indexed past-paper questions:\n${sources.map(({ id, hit }) => {
+      const question = hit.content.startsWith(`${hit.documentTitle}. `) ? hit.content.slice(hit.documentTitle.length + 2) : hit.content;
+      return `- ${question.replace(/https?:\/\/\S+/g, '')} (${hit.documentTitle}${hit.page ? `, page ${hit.page}` : ''}) [${id}]`;
+    }).join('\n')}` : 'I could not find matching indexed PYQs. I have not generated any questions.';
     return { input, intent, courseId, courseName, conversationId: conversation.id, history: conversation.history, sources, directAnswer: answer };
   }
   return { input, intent, courseId, courseName, conversationId: conversation.id, history: conversation.history, sources, ...(sources.length ? {} : { directAnswer: noSources }) };
@@ -71,34 +74,22 @@ export const chatService = {
     const raw = prepared.directAnswer ?? await getLLMProvider().generate(buildPrompt({ message: input.message, courseName: prepared.courseName, intent: prepared.intent, sources: prepared.sources, history: prepared.history }));
     return complete(prepared, raw);
   },
-  async *stream(input: ChatInput, allowedCourseIds: string[], userId: string): AsyncIterable<{ event: 'status' | 'sources' | 'token' | 'done'; data: unknown }> {
+  async *stream(input: ChatInput, allowedCourseIds: string[], userId: string, signal?: AbortSignal): AsyncIterable<{ event: 'status' | 'sources' | 'token' | 'done'; data: unknown }> {
     yield { event: 'status', data: { status: 'retrieving' } };
     const prepared = await prepare(input, allowedCourseIds, userId);
+    if (signal?.aborted) return;
     yield { event: 'sources', data: prepared.sources.map((source) => source.citation) };
     yield { event: 'status', data: { status: 'generating' } };
     let raw = prepared.directAnswer ?? '';
-    const allowed = new Set(prepared.sources.map((source) => source.id));
-    const sanitize = (value: string) => value.replace(/\[S(\d+)\]/g, (match, number: string) => allowed.has(`S${number}`) ? match : '').replace(/https?:\/\/\S+/g, '');
-    let pending = '';
     if (!prepared.directAnswer) {
-      for await (const part of getLLMProvider().stream(buildPrompt({ message: input.message, courseName: prepared.courseName, intent: prepared.intent, sources: prepared.sources, history: prepared.history }))) {
+      for await (const part of getLLMProvider().stream(buildPrompt({ message: input.message, courseName: prepared.courseName, intent: prepared.intent, sources: prepared.sources, history: prepared.history }), signal)) {
+        if (signal?.aborted) return;
         raw += part;
-        pending += part;
-        let cut = Math.max(0, pending.length - 16);
-        const url = pending.search(/https?:\/\/\S*$/);
-        if (url >= 0) cut = Math.min(cut, url);
-        const bracket = pending.lastIndexOf('[');
-        if (bracket >= 0 && pending.indexOf(']', bracket) < 0) cut = Math.min(cut, bracket);
-        if (cut > 0) {
-          const text = sanitize(pending.slice(0, cut));
-          pending = pending.slice(cut);
-          if (text) yield { event: 'token', data: { text } };
-        }
       }
     }
-    if (pending) { const text = sanitize(pending); if (text) yield { event: 'token', data: { text } }; }
+    if (signal?.aborted) return;
     const result = await complete(prepared, raw);
-    if (prepared.directAnswer) for (const text of result.answer.match(/\S+\s*/g) ?? []) yield { event: 'token', data: { text } };
+    for (const text of result.answer.match(/.{1,240}/gs) ?? []) yield { event: 'token', data: { text } };
     yield { event: 'done', data: result };
   }
 };

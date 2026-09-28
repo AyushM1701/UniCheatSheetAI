@@ -6,6 +6,7 @@
   "packageManager": "pnpm@11.22.0",
   "scripts": {
     "dev": "pnpm --filter @ucs/api dev",
+    "start": "pnpm --filter @ucs/api start",
     "dev:playground": "pnpm --filter @ucs/playground dev",
     "dev:all": "pnpm --parallel --filter @ucs/api --filter @ucs/playground dev",
     "build": "pnpm -r build",
@@ -24,6 +25,9 @@
     "drive:sync": "tsx scripts/drive-sync.ts",
     "test:embeddings": "tsx scripts/test-embeddings.ts",
     "index:file": "tsx scripts/index-file.ts",
+    "index:catalog": "tsx scripts/index-catalog.ts",
+    "reconcile:catalog": "tsx scripts/reconcile-catalog.ts",
+    "eval:retrieval": "tsx scripts/eval-retrieval.ts",
     "search": "tsx scripts/search.ts",
     "search:ai": "tsx scripts/search.ts",
     "test:chat": "tsx scripts/test-chat.ts"
@@ -33,17 +37,17 @@
     "prisma": "^6.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
-    "@ucs/database": "workspace:*",
     "@ucs/ai-core": "workspace:*",
+    "@ucs/database": "workspace:*",
     "@ucs/document-processing": "workspace:*",
-    "@ucs/embeddings": "workspace:*",
     "@ucs/drive-sync": "workspace:*",
-    "@ucs/ingestion": "workspace:*",
+    "@ucs/embeddings": "workspace:*",
     "@ucs/indexing": "workspace:*",
+    "@ucs/ingestion": "workspace:*",
     "@ucs/retrieval": "workspace:*",
     "@ucs/shared": "workspace:*",
     "@ucs/unicheatsheet-source": "workspace:*",

@@ -22,6 +22,7 @@ describe('cache-only Drive sync', () => {
       expect(entry.localPath).toContain('sem3/dbms/lecture/database-normalization-1nf-2nf-3nf--fixtureABC123.pdf');
       expect(entry.originalName).toBe('Original Name.PDF');
       expect(entry.checksum).toMatch(/^[a-f0-9]{64}$/);
+      await expect(syncResources([resource], { ...config, remote: 'main-drive:' })).rejects.toThrow('set a separate DRIVE_MANIFEST_PATH');
       expect(await syncResources([resource], config)).toMatchObject({ downloaded: 0, skipped: 1 });
       expect(calls).toHaveLength(1);
       await unlink(resolve(entry.localPath));
