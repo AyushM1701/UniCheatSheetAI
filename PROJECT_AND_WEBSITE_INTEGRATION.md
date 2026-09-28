@@ -1,6 +1,6 @@
 # UniCheatSheet AI: project guide and main website integration
 
-For the latest implementation review, test results, and remaining model/RAG/UI risks, see [PROJECT_AUDIT_2026-09-29.md](PROJECT_AUDIT_2026-09-29.md). The current six-case retrieval check and eleven database integration tests pass; a live Gemini generation check could not complete during the audit.
+For the latest implementation review, test results, and remaining model/RAG/UI risks, see [UniCheatSheetAI_Deep_Audit_Implementation_Plan.md](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) and [architecture_and_souce.md](architecture_and_souce.md). The current six-case retrieval check and eleven database integration tests pass; a live Gemini generation check could not complete during the audit.
 
 For the new offline handwritten-page OCR path and a detailed split between the ingestion PC, Hostinger API, and external PostgreSQL, see [deploy/HOSTINGER_HANDOFF.md](deploy/HOSTINGER_HANDOFF.md). That handoff also lists the secrets to change when moving from this temporary prototype to the main website. The Hostinger plan and 1.1 GB quota have not yet been verified on the actual account.
 
@@ -12,7 +12,7 @@ PDF text extraction now optionally OCRs individual low-text pages with Poppler `
 
 The AI frontend now exposes a token-provider adapter; the website can supply its existing authenticated session's short-lived AI JWT and API base URL to that adapter. The website still has to implement the small server-side token issuance contract described below. The real entitlement/course IDs, main Drive rclone remote, production Gemini key, DNS/TLS, and protected original-resource links still need to be configured on their respective machines. The local provisional course mappings must not be treated as production entitlements.
 
-The implementation details later in this guide describe the original prototype baseline where they conflict with this dated update. The review's [implementation update](PROJECT_REVIEW.md) tracks the code changes and remaining verification.
+The implementation details later in this guide describe the original prototype baseline where they conflict with this dated update. The [deep audit plan](UniCheatSheetAI_Deep_Audit_Implementation_Plan.md) tracks the code changes and remaining verification.
 
 This document describes the code in this repository as of 28 September 2026 and the work required to connect it to the real UniCheatSheet website. The AI service is deliberately independent: it can run on a different computer from the website. The website remains responsible for accounts, payments, and course access. The AI service is responsible for finding indexed study material and generating answers grounded in that material.
 
