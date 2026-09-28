@@ -1,0 +1,52 @@
+{
+  "name": "unicheatsheet-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "dev": "pnpm --filter @ucs/api dev",
+    "dev:playground": "pnpm --filter @ucs/playground dev",
+    "dev:all": "pnpm --parallel --filter @ucs/api --filter @ucs/playground dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:seed": "tsx scripts/seed.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "scan:resources": "tsx scripts/scan-unicheatsheet.ts",
+    "scan:folders": "tsx scripts/scan-drive-folders.ts",
+    "catalog:scan": "tsx scripts/scan-unicheatsheet.ts",
+    "sync:drive": "tsx scripts/sync-drive.ts",
+    "test:parse": "tsx scripts/test-parse.ts",
+    "drive:sync": "tsx scripts/drive-sync.ts",
+    "test:embeddings": "tsx scripts/test-embeddings.ts",
+    "index:file": "tsx scripts/index-file.ts",
+    "search": "tsx scripts/search.ts",
+    "search:ai": "tsx scripts/search.ts",
+    "test:chat": "tsx scripts/test-chat.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prisma": "^6.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "@ucs/database": "workspace:*",
+    "@ucs/ai-core": "workspace:*",
+    "@ucs/document-processing": "workspace:*",
+    "@ucs/embeddings": "workspace:*",
+    "@ucs/drive-sync": "workspace:*",
+    "@ucs/ingestion": "workspace:*",
+    "@ucs/indexing": "workspace:*",
+    "@ucs/retrieval": "workspace:*",
+    "@ucs/shared": "workspace:*",
+    "@ucs/unicheatsheet-source": "workspace:*",
+    "dotenv": "^16.0.0"
+  }
+}

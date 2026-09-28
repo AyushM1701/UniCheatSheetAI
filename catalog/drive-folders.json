@@ -1,0 +1,20 @@
+{
+  "output": "catalog/folder-resources.json",
+  "folders": [
+    {
+      "id": "1889Q05DBnp5Otvh_usNMrcV63cFKJrg5",
+      "default": { "courseId": "computer-architecture", "semester": 2, "type": "pyq" }
+    },
+    {
+      "id": "1Y2TeHwEfSp0qvQEKSYT0k7ofGAYwXMNe",
+      "files": {
+        "1mChnhiEdCWqjIi3DAGR4rgUrW32ATE19": { "courseId": "digital-electronics-bsc", "semester": 1, "type": "pyq" },
+        "113D-9gra19vMRHV-mTKhWQxtL6augzJi": { "courseId": "digital-electronics", "semester": 2, "type": "pyq" }
+      }
+    },
+    {
+      "id": "1ScTwMDG5IY2GXlLHH2tAKJf07EqNpzW6",
+      "default": { "courseId": "physics", "semester": 2, "type": "pyq" }
+    }
+  ]
+}

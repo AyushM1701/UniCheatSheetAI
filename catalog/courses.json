@@ -1,0 +1,8 @@
+[
+  {"id":"dbms","code":"DBMS","name":"Database Management Systems","semester":3,"aliases":["DBMS","database","SQL"],"description":"Relational databases, normalization, transactions, and SQL."},
+  {"id":"evs-living-lab","code":"EVS Living Lab","name":"EVS Living Lab","semester":2,"aliases":["Living Lab","EVS Lab","Environmental Studies Lab"],"description":"Environmental studies living lab activities and group projects."},
+  {"id":"physics","code":"PHYS1036","name":"Physics","semester":2,"aliases":["Physics [Theory]","Physics [LAB]","Engineering Physics","Physics for Computer Engineers"],"description":"Semester II physics, including electromagnetics and semiconductor physics."},
+  {"id":"computer-architecture","code":"CSEG1032","name":"Computer System and Organization Architecture","semester":2,"aliases":["Computer System Architecture","Computer Organization and Architecture"],"description":"Local provisional mapping for the supplied Semester II architecture exam papers; confirm against the main site's course IDs."},
+  {"id":"digital-electronics-bsc","code":"ECEG1010","name":"Digital Electronics (B.Sc. CSE)","semester":1,"aliases":["Digital Electronics BSc"],"description":"Local provisional mapping for the supplied B.Sc. Semester I exam paper."},
+  {"id":"digital-electronics","code":"ECEG1012","name":"Digital Electronics (B.Tech CSE)","semester":2,"aliases":["Digital Electronics BTech"],"description":"Local provisional mapping for the supplied B.Tech Semester II exam paper."}
+]

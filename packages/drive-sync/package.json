@@ -1,0 +1,1 @@
+{"name":"@ucs/drive-sync","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@ucs/database":"workspace:*","@ucs/ingestion":"workspace:*","@ucs/unicheatsheet-source":"workspace:*"}}

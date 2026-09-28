@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "packages/providers/llm"
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "esbuild"
+  - "onnxruntime-node"
+  - "prisma"
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  onnxruntime-node: true
+  prisma: true
+  protobufjs: false
+  sharp: false

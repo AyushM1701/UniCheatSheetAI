@@ -1,0 +1,89 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 457 >>
+stream
+BT /F1 12 Tf 50 740 Td 16 TL
+(DBMS Normalization - Sample Notes) Tj T*
+(Normalization organizes relational tables to reduce redundancy and update anomalies.) Tj T*
+(First Normal Form \(1NF\): each column contains atomic values and rows are unique.) Tj T*
+(Second Normal Form \(2NF\): a table in 1NF has no partial dependency on a composite key.) Tj T*
+(Third Normal Form \(3NF\): a table in 2NF has no transitive dependency of a non-key attribute.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 450 >>
+stream
+BT /F1 12 Tf 50 740 Td 16 TL
+(Normalization Worked Example) Tj T*
+(Consider Enrollment\(student_id, course_id, student_name, course_name, grade\).) Tj T*
+(The composite key is \(student_id, course_id\). Student_name depends only on student_id.) Tj T*
+(Course_name depends only on course_id. Split into Student, Course, and Enrollment tables.) Tj T*
+(The split removes partial dependencies and avoids repeating names in every enrollment row.) Tj T*
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 444 >>
+stream
+BT /F1 12 Tf 50 740 Td 16 TL
+(Functional Dependencies) Tj T*
+(A functional dependency X determines Y means each value of X is associated with one value of Y.) Tj T*
+(For example student_id determines student_name in a Student relation.) Tj T*
+(A candidate key is a minimal set of attributes that functionally determines all attributes.) Tj T*
+(Partial dependencies and transitive dependencies help identify violations of normal forms.) Tj T*
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 412 >>
+stream
+BT /F1 12 Tf 50 740 Td 16 TL
+(SQL Joins) Tj T*
+(An INNER JOIN returns rows with matching keys in both tables.) Tj T*
+(A LEFT JOIN returns all rows from the left table plus matched rows from the right table.) Tj T*
+(A RIGHT JOIN returns all rows from the right table plus matched rows from the left table.) Tj T*
+(Use an ON clause to state the join condition, such as Student.id = Enrollment.student_id.) Tj T*
+ET
+endstream
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000134 00000 n 
+0000000204 00000 n 
+0000000330 00000 n 
+0000000838 00000 n 
+0000000964 00000 n 
+0000001465 00000 n 
+0000001591 00000 n 
+0000002086 00000 n 
+0000002214 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+2678
+%%EOF

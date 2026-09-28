@@ -1,0 +1,7 @@
+# Replace both placeholders after creating a named tunnel in your Cloudflare account.
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: C:/path/to/YOUR_TUNNEL_UUID.json
+ingress:
+  - hostname: ai-api.unicheatsheet.com
+    service: http://127.0.0.1:4000
+  - service: http_status:404

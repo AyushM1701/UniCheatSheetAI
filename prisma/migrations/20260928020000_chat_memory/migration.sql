@@ -1,0 +1,2 @@
+ALTER TABLE conversations ADD COLUMN title TEXT;
+ALTER TABLE messages ADD COLUMN citations JSONB NOT NULL DEFAULT '[]';

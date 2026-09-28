@@ -1,0 +1,4 @@
+# Point this hostname at the AI server before starting Caddy.
+ai-api.unicheatsheet.com {
+  reverse_proxy 127.0.0.1:4000
+}

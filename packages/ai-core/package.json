@@ -1,0 +1,1 @@
+{"name":"@ucs/ai-core","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@ucs/database":"workspace:*","@ucs/llm":"workspace:*","@ucs/retrieval":"workspace:*","@ucs/shared":"workspace:*"}}

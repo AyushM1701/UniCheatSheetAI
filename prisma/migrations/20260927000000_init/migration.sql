@@ -1,0 +1,12 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE courses (id TEXT PRIMARY KEY, code TEXT UNIQUE, name TEXT NOT NULL, semester INTEGER NOT NULL, aliases TEXT[] NOT NULL DEFAULT '{}', description TEXT);
+CREATE TABLE academic_documents (id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id), source TEXT NOT NULL DEFAULT 'unicheatsheet', type TEXT NOT NULL, title TEXT NOT NULL, source_url TEXT, file_path TEXT, checksum TEXT NOT NULL, visibility TEXT NOT NULL DEFAULT 'global', owner_user_id TEXT, metadata JSONB NOT NULL DEFAULT '{}', created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP(3) NOT NULL);
+CREATE INDEX academic_documents_course_id_type_idx ON academic_documents(course_id,type);
+CREATE TABLE document_chunks (id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES academic_documents(id) ON DELETE CASCADE, course_id TEXT NOT NULL REFERENCES courses(id), chunk_index INTEGER NOT NULL, content TEXT NOT NULL, page INTEGER, section TEXT, metadata JSONB NOT NULL DEFAULT '{}', embedding vector(1536), CONSTRAINT document_chunks_document_id_chunk_index_key UNIQUE(document_id,chunk_index));
+CREATE INDEX document_chunks_course_id_idx ON document_chunks(course_id);
+CREATE INDEX document_chunks_embedding_idx ON document_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX document_chunks_content_idx ON document_chunks USING gin (to_tsvector('english',content));
+CREATE TABLE conversations (id TEXT PRIMARY KEY, created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP(3) NOT NULL);
+CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, sources JSONB NOT NULL DEFAULT '[]', created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX messages_conversation_id_created_at_idx ON messages(conversation_id,created_at);
+CREATE TABLE ingestion_runs (id TEXT PRIMARY KEY, document_id TEXT, status TEXT NOT NULL, detail TEXT, created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);

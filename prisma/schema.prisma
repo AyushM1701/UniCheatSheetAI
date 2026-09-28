@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../packages/database/src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id          String             @id
+  code        String?            @unique
+  name        String
+  semester    Int
+  aliases     String[]           @default([])
+  description String?
+  documents   AcademicDocument[]
+  chunks      DocumentChunk[]
+  sourceFiles SourceFile[]
+  @@map("courses")
+}
+
+model AcademicDocument {
+  id          String          @id
+  courseId    String          @map("course_id")
+  course      Course          @relation(fields: [courseId], references: [id])
+  source      String          @default("unicheatsheet")
+  type        String
+  title       String
+  sourceUrl   String?         @map("source_url")
+  filePath    String?         @map("file_path")
+  checksum    String
+  visibility  String          @default("global")
+  ownerUserId String?         @map("owner_user_id")
+  metadata    Json            @default("{}")
+  pageCount   Int?            @map("page_count")
+  processingStatus String      @default("pending") @map("processing_status")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  chunks      DocumentChunk[]
+  sourceFile  SourceFile?
+  @@index([courseId, type])
+  @@map("academic_documents")
+}
+
+model DocumentChunk {
+  id         String           @id @default(uuid())
+  documentId String           @map("document_id")
+  document   AcademicDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  courseId   String           @map("course_id")
+  course     Course           @relation(fields: [courseId], references: [id])
+  chunkIndex Int              @map("chunk_index")
+  content    String
+  page       Int?
+  pageStart  Int?             @map("page_start")
+  pageEnd    Int?             @map("page_end")
+  tokenEstimate Int?          @map("token_estimate")
+  section    String?
+  metadata   Json             @default("{}")
+  embedding  Unsupported("vector(384)")?
+  @@unique([documentId, chunkIndex])
+  @@index([courseId])
+  @@map("document_chunks")
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  allowedCourseIds String[] @default([]) @map("allowed_course_ids")
+  title     String?
+  courseId  String?   @map("course_id")
+  semester  Int?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  messages  Message[]
+  @@index([userId, updatedAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  sources        Json          @default("[]")
+  citations      Json          @default("[]")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model IngestionRun {
+  id         String    @id @default(uuid())
+  documentId String?   @map("document_id")
+  status     String
+  detail     String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  @@map("ingestion_runs")
+}
+
+model SourceFile {
+  id                 String            @id
+  provider           String
+  remoteRoot         String            @map("remote_root")
+  remoteFileId       String?           @map("remote_file_id")
+  remotePath         String            @map("remote_path")
+  localPath          String            @map("local_path")
+  name               String
+  resourceType       String            @default("other") @map("resource_type")
+  mimeType           String?           @map("mime_type")
+  size               BigInt
+  remoteHash         String?           @map("remote_hash")
+  localHash          String?           @map("local_hash")
+  modifiedAt         DateTime?         @map("modified_at")
+  lastSeenAt         DateTime          @default(now()) @map("last_seen_at")
+  lastCheckedAt      DateTime?         @map("last_checked_at")
+  indexedAt          DateTime?         @map("indexed_at")
+  active             Boolean           @default(true)
+  syncStatus         String            @default("pending") @map("sync_status")
+  indexStatus        String            @default("pending") @map("index_status")
+  sourceUrl          String?           @map("source_url")
+  courseId           String            @map("course_id")
+  course             Course            @relation(fields: [courseId], references: [id])
+  academicDocumentId String?           @unique @map("academic_document_id")
+  academicDocument   AcademicDocument? @relation(fields: [academicDocumentId], references: [id], onDelete: SetNull)
+  @@unique([provider, remoteRoot, remotePath])
+  @@unique([provider, remoteFileId])
+  @@index([courseId, syncStatus])
+  @@map("source_files")
+}

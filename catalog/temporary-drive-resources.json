@@ -1,0 +1,35 @@
+[
+  {
+    "semester": 2,
+    "courseId": "evs-living-lab",
+    "courseName": "EVS Living Lab",
+    "type": "lecture",
+    "title": "Class activities and group project",
+    "provider": "google_drive",
+    "driveFileId": "1xpxD6gF8IpERg0jwNQijPpXSy5-rr8DA",
+    "sourceUrl": "https://drive.google.com/file/d/1xpxD6gF8IpERg0jwNQijPpXSy5-rr8DA/view?usp=drive_link",
+    "sourcePage": "user-provided"
+  },
+  {
+    "semester": 2,
+    "courseId": "physics",
+    "courseName": "Physics",
+    "type": "tutorial",
+    "title": "Tutorial EMT 2024-25 Sem II Unit II",
+    "provider": "google_drive",
+    "driveFileId": "1E0H8cONQPFmuQP78GMyBTFGPUXVWzFmY",
+    "sourceUrl": "https://drive.google.com/file/d/1E0H8cONQPFmuQP78GMyBTFGPUXVWzFmY/view",
+    "sourcePage": "user-provided-folder/1cfhlcPuz7lMsmrW23m7nCrVBdSCugkhn"
+  },
+  {
+    "semester": 2,
+    "courseId": "physics",
+    "courseName": "Physics",
+    "type": "tutorial",
+    "title": "Tutorial Semiconductor Physics 2024-25 Sem II Unit IV",
+    "provider": "google_drive",
+    "driveFileId": "1xDGkFFb8yit55f-6cTh7GuafK-tCEmJU",
+    "sourceUrl": "https://drive.google.com/file/d/1xDGkFFb8yit55f-6cTh7GuafK-tCEmJU/view",
+    "sourcePage": "user-provided-folder/1cfhlcPuz7lMsmrW23m7nCrVBdSCugkhn"
+  }
+]

@@ -1,0 +1,24 @@
+{
+  "name": "@ucs/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@ucs/ai-core": "workspace:*",
+    "@ucs/database": "workspace:*",
+    "@ucs/document-processing": "workspace:*",
+    "@ucs/ingestion": "workspace:*",
+    "@ucs/providers": "workspace:*",
+    "@ucs/retrieval": "workspace:*",
+    "@ucs/shared": "workspace:*",
+    "dotenv": "^16.0.0",
+    "fastify": "^5.0.0",
+    "jose": "^6.2.12",
+    "zod": "^3.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+{"name":"@ucs/retrieval","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@ucs/database":"workspace:*","@ucs/providers":"workspace:*","@ucs/shared":"workspace:*","@prisma/client":"^6.0.0"}}
