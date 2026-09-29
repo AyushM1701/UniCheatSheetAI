@@ -6,12 +6,13 @@ This is the standalone prototype on the AI PC. The main UniCheatSheet website an
 
 - Fastify API on `127.0.0.1:4000`, Next.js UI on `localhost:3000`, PostgreSQL/pgvector, local embeddings, and Gemini generation.
 - Allowed courses come from the development access context or a verified website JWT. The UI cannot widen course access. The AI-side JWT verifier can use a single RS256 public key or a local JWKS file containing overlapping keys for rotation.
-- Course, material type, and document scopes; indexed resource browsing; cited source details; true streamed model output; deterministic PYQ browsing; and labeled general teaching explanations.
+- Course, material type, and document scopes; indexed resource browsing; a filtered past-paper question browser with document-scoped “Ask AI to solve”; cited source details; true streamed model output; deterministic PYQ browsing; and labeled general teaching explanations.
 - Resource catalog IDs can be supplied explicitly. Provisional local IDs are used until canonical IDs arrive. Multiple logical catalog entries may name one physical Drive ID; cross-course copies still require separate indexed documents.
-- Structured exam-question records hold explicit paper/question metadata. `/v1/pyqs/questions` lists them, and `/v1/pyqs/repeated` counts exact wording repeats across distinct papers. This does **not** infer semantic topic repetition.
-- On this PC, the 10 cached catalog PDFs were reindexed successfully with the current pipeline key, the separate 97-page DBMS PDF was reindexed, and the database has 112 structured question records. The development account can browse 13 indexed resources in its allowed courses.
-- OCR confidence and review flags remain attached to indexed pages. Tesseract now extracts text and confidence in one pass. KaTeX renders model math. Conversation deletion and a retention purge command are available.
+- Structured exam-question records hold explicit paper/question metadata. Open-ended PYQ chat browsing prefers these records and uses legacy chunks only for papers not yet backfilled. `/v1/pyqs/questions` supports course, year, exam type, document, question number, and OCR review filters; `/v1/pyqs/repeated` counts exact wording repeats across distinct papers. This does **not** infer semantic topic repetition.
+- On this PC, the 10 cached catalog PDFs were reindexed successfully with the current pipeline key, the separate 97-page DBMS PDF was reindexed, and the database has 113 structured question records. The development account can browse 13 indexed resources in its allowed courses.
+- OCR confidence and review flags remain attached to indexed pages. Resource cards expose counts of OCR pages and pages needing review where extraction metadata exists. Tesseract extracts text and confidence in one pass. KaTeX renders model math. Students can delete individual conversations in the history drawer; an account-wide deletion endpoint and a retention purge command are also available.
 - Replacement indexing tracks revision, pending checksum, last successful indexing time, and last failure. A failed replacement keeps the previous indexed chunks available; this path is covered by an isolated database test.
+- Broad requests such as “Give me some real past-paper questions from this course” browse indexed question records for the selected course. Topic-specific PYQ requests still search by topic. Course quick actions clear any previous document scope before sending.
 
 ## Start and verify
 
@@ -22,6 +23,8 @@ This is the standalone prototype on the AI PC. The main UniCheatSheet website an
 5. Run `pnpm dev:all`; open `http://localhost:3000/`.
 6. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm eval:retrieval`. Integration tests require a separate database whose name contains `_test` or `_review`.
 7. Schedule `pnpm privacy:purge` on the AI PC; `CONVERSATION_RETENTION_DAYS` defaults to 90.
+
+Local verification on 29 September 2026: typecheck, production build, 26 unit tests, 15 isolated-database integration tests, 13/13 retrieval cases, and the high-severity dependency audit passed. Both `localhost:3000/` and the API readiness endpoint responded successfully. These checks cover the temporary corpus and cannot establish answer quality for the future full Drive.
 
 ## Configuration to replace before the real rollout
 

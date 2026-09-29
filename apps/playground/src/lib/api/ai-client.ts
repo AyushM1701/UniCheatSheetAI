@@ -47,8 +47,13 @@ export const ai = {
   getCoverage: () => request<CoverageItem[]>('coverage'),
   getResources: (filters: { courseId?: string; type?: string; category?: 'notes' | 'pyqs' | 'solutions'; page?: number; limit?: number } = {}) => request<{ page: number; limit: number; total: number; resources: AcademicResource[] }>(`resources?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])).toString()}`),
   getRepeatedPyqs: (courseId: string) => request<{ analyzedQuestions: number; truncated: boolean; total: number; repeated: Array<{ text: string; paperCount: number; appearances: Array<{ chunkId: string; paperTitle: string; year: number | null; page: number | null }> }> }>(`pyqs/repeated?courseId=${encodeURIComponent(courseId)}&limit=10`),
+  getPyqQuestions: (filters: { courseId: string; year?: number; examType?: 'mid_semester' | 'end_semester'; page?: number; limit?: number }) => request<{ page: number; limit: number; total: number; questions: Array<{ id: string; documentId: string; chunkId: string; questionNumber: string | null; year: number | null; examType: string | null; text: string; page: number | null; needsReview: boolean; paperTitle: string }> }>(`pyqs/questions?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])).toString()}`),
   getConversations: () => request<ConversationSummary[]>('conversations'),
   getConversation: (id: string) => request<Conversation>(`conversations/${encodeURIComponent(id)}`),
+  async deleteConversation(id: string): Promise<void> {
+    const response = await apiFetch(`conversations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!response.ok) throw new AiApiError(`Could not delete conversation (${response.status})`, response.status);
+  },
   getSource: (id: string) => request<SourceDetail>(`chunks/${encodeURIComponent(id)}`),
   retrieve: (query: string, courseId?: string) => request<{ query: string; results: unknown[] }>('retrieve', { method: 'POST', body: JSON.stringify({ query, courseId }) }),
   search: (query: string, courseId?: string) => request<{ query: string; results: unknown[] }>('retrieve', { method: 'POST', body: JSON.stringify({ query, courseId }) }),

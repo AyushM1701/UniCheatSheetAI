@@ -93,6 +93,14 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
     });
     return rows.map((row) => ({ courseId: row.courseId, type: row.type, count: row._count._all, lastIndexedAt: row._max.updatedAt }));
   });
+  const extractionCoverage = (metadata: Prisma.JsonValue | undefined) => {
+    const pages = metadata && typeof metadata === 'object' && !Array.isArray(metadata) && 'pageExtraction' in metadata ? metadata.pageExtraction : null;
+    if (!Array.isArray(pages)) return { needsReviewPageCount: null, ocrPageCount: null };
+    return {
+      needsReviewPageCount: pages.filter((page) => page && typeof page === 'object' && !Array.isArray(page) && page.needsReview === true).length,
+      ocrPageCount: pages.filter((page) => page && typeof page === 'object' && !Array.isArray(page) && page.method !== 'native').length
+    };
+  };
   const resourceQuerySchema = z.object({
     courseId: z.string().trim().min(1).optional(),
     type: z.enum(['lecture', 'pyq', 'solution', 'tutorial', 'assignment', 'book', 'syllabus', 'announcement', 'other']).optional(),
@@ -110,18 +118,27 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
     const where = { active: true, courseId: { in: query.courseId ? [query.courseId] : allowedIds }, academicDocument: { is: { processingStatus: 'indexed' as const, visibility: 'global' as const, OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } }, ...(query.type ? { resourceType: query.type } : categoryTypes ? { resourceType: { in: [...categoryTypes] } } : {}), ...(query.unit ? { unit: query.unit } : {}) };
     const [total, rows] = await Promise.all([
       db.resource.count({ where }),
-      db.resource.findMany({ where, orderBy: [{ courseId: 'asc' }, { resourceType: 'asc' }, { sortOrder: 'asc' }, { title: 'asc' }], skip: (query.page - 1) * query.limit, take: query.limit, include: { course: { select: { name: true } }, academicDocument: { select: { processingStatus: true, pageCount: true, sourceFile: { select: { active: true } } } } } })
+      db.resource.findMany({ where, orderBy: [{ courseId: 'asc' }, { resourceType: 'asc' }, { sortOrder: 'asc' }, { title: 'asc' }], skip: (query.page - 1) * query.limit, take: query.limit, include: { course: { select: { name: true } }, academicDocument: { select: { processingStatus: true, pageCount: true, metadata: true, sourceFile: { select: { active: true } } } } } })
     ]);
-    return { page: query.page, limit: query.limit, total, resources: rows.map((row) => ({ id: row.id, courseId: row.courseId, courseName: row.course.name, resourceType: row.resourceType, title: row.title, unit: row.unit, contentFormat: row.contentFormat, documentId: row.academicDocumentId, indexed: row.academicDocument?.processingStatus === 'indexed' && row.academicDocument.sourceFile?.active !== false, pageCount: row.academicDocument?.pageCount ?? null })) };
+    return { page: query.page, limit: query.limit, total, resources: rows.map((row) => ({ id: row.id, courseId: row.courseId, courseName: row.course.name, resourceType: row.resourceType, title: row.title, unit: row.unit, contentFormat: row.contentFormat, documentId: row.academicDocumentId, indexed: row.academicDocument?.processingStatus === 'indexed' && row.academicDocument.sourceFile?.active !== false, pageCount: row.academicDocument?.pageCount ?? null, ...extractionCoverage(row.academicDocument?.metadata) })) };
   });
   app.get('/v1/resources/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const context = await readContext(request);
-    const row = await db.resource.findFirst({ where: { id, active: true, courseId: { in: context.allowedCourses.map((course) => course.id) } }, include: { course: { select: { name: true } }, academicDocument: { select: { processingStatus: true, pageCount: true, sourceFile: { select: { active: true } } } } } });
+    const row = await db.resource.findFirst({ where: { id, active: true, courseId: { in: context.allowedCourses.map((course) => course.id) } }, include: { course: { select: { name: true } }, academicDocument: { select: { processingStatus: true, pageCount: true, metadata: true, sourceFile: { select: { active: true } } } } } });
     if (!row) return reply.status(404).send({ error: 'Resource not found' });
-    return { id: row.id, courseId: row.courseId, courseName: row.course.name, resourceType: row.resourceType, title: row.title, unit: row.unit, contentFormat: row.contentFormat, documentId: row.academicDocumentId, indexed: row.academicDocument?.processingStatus === 'indexed' && row.academicDocument.sourceFile?.active !== false, pageCount: row.academicDocument?.pageCount ?? null };
+    return { id: row.id, courseId: row.courseId, courseName: row.course.name, resourceType: row.resourceType, title: row.title, unit: row.unit, contentFormat: row.contentFormat, documentId: row.academicDocumentId, indexed: row.academicDocument?.processingStatus === 'indexed' && row.academicDocument.sourceFile?.active !== false, pageCount: row.academicDocument?.pageCount ?? null, ...extractionCoverage(row.academicDocument?.metadata) };
   });
-  const pyqQuery = z.object({ courseId: z.string().trim().min(1), page: z.coerce.number().int().min(1).max(1000).default(1), limit: z.coerce.number().int().min(1).max(50).default(20) }).strict();
+  const pyqQuery = z.object({
+    courseId: z.string().trim().min(1),
+    year: z.coerce.number().int().min(1900).max(2100).optional(),
+    examType: z.enum(['mid_semester', 'end_semester']).optional(),
+    documentId: z.string().trim().min(1).optional(),
+    questionNumber: z.string().trim().regex(/^\d{1,3}$/).optional(),
+    needsReview: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(20)
+  }).strict();
   const pyqWhere = async (request: Parameters<AccessContextProvider['getContext']>[0], courseId: string) => {
     const context = await readContext(request);
     if (!context.allowedCourses.some((course) => course.id === courseId)) throw new ForbiddenCourseError('Course is outside your allowed courses');
@@ -129,7 +146,12 @@ export function buildApp(contextProvider: AccessContextProvider = createAccessCo
   };
   app.get('/v1/pyqs/questions', async (request) => {
     const query = pyqQuery.parse(request.query);
-    const where = await pyqWhere(request, query.courseId);
+    const where = { ...await pyqWhere(request, query.courseId),
+      ...(query.year ? { year: query.year } : {}),
+      ...(query.examType ? { examType: query.examType } : {}),
+      ...(query.documentId ? { documentId: query.documentId } : {}),
+      ...(query.questionNumber ? { questionNumber: query.questionNumber } : {}),
+      ...(query.needsReview !== undefined ? { needsReview: query.needsReview } : {}) };
     const [total, rows] = await Promise.all([
       db.examQuestion.count({ where }),
       db.examQuestion.findMany({ where, orderBy: [{ year: 'desc' }, { documentId: 'asc' }, { page: 'asc' }], skip: (query.page - 1) * query.limit, take: query.limit, include: { document: { select: { title: true } } } })

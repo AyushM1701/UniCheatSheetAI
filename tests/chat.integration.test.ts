@@ -77,8 +77,9 @@ describe('grounded chat API', () => {
       update: { processingStatus: 'indexed' }
     });
     await db.documentChunk.deleteMany({ where: { documentId: pyqDocumentId } });
-    await db.documentChunk.create({ data: { documentId: pyqDocumentId, courseId: 'digital-electronics', chunkIndex: 0, content: 'Digital Electronics Test PYQ. Question 1: Q1 Design a two input NAND gate with CMOS logic.', page: 1, pageStart: 1, pageEnd: 1 } });
+    const firstQuestion = await db.documentChunk.create({ data: { documentId: pyqDocumentId, courseId: 'digital-electronics', chunkIndex: 0, content: 'Digital Electronics Test PYQ. Question 1: Q1 Design a two input NAND gate with CMOS logic.', page: 1, pageStart: 1, pageEnd: 1 } });
     await db.documentChunk.create({ data: { documentId: pyqDocumentId, courseId: 'digital-electronics', chunkIndex: 1, content: 'Digital Electronics Test PYQ. Question 2: Q2 Convert a JK flip-flop to a T flip-flop.', page: 1, pageStart: 1, pageEnd: 1 } });
+    await db.examQuestion.create({ data: { documentId: pyqDocumentId, chunkId: firstQuestion.id, courseId: 'digital-electronics', questionNumber: '1', year: 2025, examType: 'end_semester', text: firstQuestion.content, page: 1 } });
     const response = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'give me some questions on digital electronics based on the pyqs' } });
     expect(response.statusCode).toBe(200);
     const body = response.json();
@@ -87,6 +88,12 @@ describe('grounded chat API', () => {
     expect(body.answer).toContain('Design a two input NAND gate');
     expect(body.answer).toContain('explain it step by step');
     expect(body.citations.some((citation: { documentId: string }) => citation.documentId === pyqDocumentId)).toBe(true);
+    const broad = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'Give me some real past-paper questions from this course', mode: 'pyqs', scope: { courseId: 'digital-electronics' } } });
+    expect(broad.statusCode).toBe(200);
+    conversations.push(broad.json().conversationId);
+    expect(broad.json().answer).toContain('Design a two input NAND gate');
+    expect(broad.json().metadata.intent).toBe('resource_search');
+    expect(broad.json().citations.length).toBeGreaterThan(0);
     const followUp = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'solve question 1', conversationId: body.conversationId } });
     expect(followUp.statusCode).toBe(200);
     expect(followUp.json().metadata.intent).toBe('academic_rag');
@@ -112,6 +119,7 @@ describe('grounded chat API', () => {
     expect(listing.statusCode).toBe(200);
     expect(listing.json().resources.some((resource: { documentId: string }) => resource.documentId === documentId)).toBe(true);
     const resource = listing.json().resources.find((item: { documentId: string }) => item.documentId === documentId);
+    expect(resource).toMatchObject({ needsReviewPageCount: expect.any(Number), ocrPageCount: expect.any(Number) });
     const scoped = await app.inject({ method: 'POST', url: '/v1/chat', payload: { message: 'Explain normalization from this document', mode: 'notes', scope: { resourceId: resource.id, documentId, courseId: 'dbms' } } });
     expect(scoped.statusCode).toBe(200);
     conversations.push(scoped.json().conversationId);
@@ -138,6 +146,11 @@ describe('grounded chat API', () => {
     const allowed = await app.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics&limit=5' });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toMatchObject({ page: 1, limit: 5 });
+    const filtered = await app.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics&year=2025&examType=end_semester&questionNumber=1' });
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.json().questions.some((question: { documentId: string }) => question.documentId === pyqDocumentId)).toBe(true);
+    const excluded = await app.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics&year=2024&documentId=chat-digital-pyq-fixture' });
+    expect(excluded.json().questions).toEqual([]);
     const restricted = buildApp({ getContext: async () => ({ userId: 'restricted-pyq-test', semester: 3, allowedCourses: [{ id: 'dbms', name: 'Database Management Systems' }] }) });
     try {
       expect((await restricted.inject({ method: 'GET', url: '/v1/pyqs/questions?courseId=digital-electronics' })).statusCode).toBe(403);

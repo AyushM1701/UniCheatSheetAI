@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routeQuery, retrievalQuery, validateCitations } from '../packages/ai-core/src/index.js';
+import { pyqTopicQuery, routeQuery, retrievalQuery, validateCitations } from '../packages/ai-core/src/index.js';
 import { buildPrompt } from '../packages/ai-core/src/prompt-builder.js';
 import { selectResourceHits } from '../packages/ai-core/src/chat-service.js';
 
@@ -7,6 +7,7 @@ describe('grounded chat rules', () => {
   it('distinguishes PYQ lookup from generated practice', () => {
     expect(routeQuery('Give me PYQs on normalization')).toBe('resource_search');
     expect(routeQuery('give me some questions on digital electronics based on the pyqs')).toBe('resource_search');
+    expect(routeQuery('Give me some real past-paper questions from this course')).toBe('resource_search');
     expect(routeQuery('Explain how to solve this PYQ')).toBe('academic_rag');
     expect(routeQuery('Generate 10 practice questions on normalization')).toBe('practice_generation');
     expect(routeQuery('How many DBMS PYQs are available?')).toBe('database_query');
@@ -15,6 +16,8 @@ describe('grounded chat rules', () => {
     expect(retrievalQuery('Explain SQL ON clauses', 'dbms')).toBe('SQL ON clauses');
     expect(retrievalQuery('Explain Flynn taxonomy from the 2024 computer architecture paper', 'computer-architecture')).toBe('Flynn taxonomy');
     expect(retrievalQuery('give me some questions on digital electronics based on the pyqs', 'digital-electronics')).toBe('');
+    expect(pyqTopicQuery('Give me some real past-paper questions from this course', 'computer-architecture')).toBe('');
+    expect(pyqTopicQuery('Give me real past-paper questions on Flynn taxonomy from this course', 'computer-architecture')).toBe('Flynn taxonomy');
     expect(retrievalQuery('What is it used for?', 'dbms', [{ role: 'user', content: 'What is a database schema?' }, { role: 'assistant', content: 'A database schema is a blueprint.' }])).toContain('database schema');
   });
   it('accepts only citations assigned to retrieved chunks', () => {

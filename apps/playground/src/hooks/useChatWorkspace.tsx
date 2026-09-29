@@ -9,6 +9,7 @@ type WorkspaceContext = {
   courses: UserAcademicContext['allowedCourses']; semester: number | null; history: ConversationSummary[]; conversationId: string | null; sourceCount: number;
   coverage: CoverageItem[];
   send: (message: string) => Promise<boolean>; stop: () => void; openConversation: (id: string) => Promise<void>; newChat: () => void; refreshHistory: () => Promise<void>;
+  deleteConversation: (id: string) => Promise<void>;
   drawerCitation: Citation | null; openSource: (citation: Citation) => void; closeSource: () => void;
   navigationTarget: string | null;
 };
@@ -114,6 +115,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } catch (cause) { if (version === requestVersion.current) { setMessages([]); setConversationId(null); setStatus('error'); setError(cause instanceof Error ? cause.message : 'Could not open conversation'); } }
   }, [conversationId, messages.length]);
   const newChat = useCallback(() => { ++requestVersion.current; activeController.current?.abort(); active.current = false; pendingUserId.current = null; setNavigationTarget('/'); setMessages([]); setConversationId(null); setScope({ courseId: defaultCourse.current ?? undefined, sources: ['unicheatsheet'] }); setMode('auto'); setStatus('idle'); setError(null); setSourceCount(0); setDrawerCitation(null); router.push('/'); }, [router]);
+  const deleteConversation = useCallback(async (id: string) => {
+    await ai.deleteConversation(id);
+    setHistory((current) => current.filter((item) => item.id !== id));
+    if (conversationId === id) newChat();
+  }, [conversationId, newChat]);
   const stop = useCallback(() => { ++requestVersion.current; activeController.current?.abort(); activeController.current = null; active.current = false; const id = pendingUserId.current; pendingUserId.current = null; setMessages((current) => current.filter((item) => !item.pending && item.id !== id)); setStatus('idle'); setError(null); }, []);
   const send = useCallback(async (text: string) => {
     const message = text.trim();
@@ -157,5 +163,5 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       return false;
     } finally { if (version === requestVersion.current) { active.current = false; activeController.current = null; } }
   }, [conversationId, mode, router, scope]);
-  return <Context.Provider value={{ messages, status, error, scope, setScope, mode, setMode, courses, semester, history, coverage, conversationId, sourceCount, send, stop, openConversation, newChat, refreshHistory, drawerCitation, openSource: setDrawerCitation, closeSource, navigationTarget }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ messages, status, error, scope, setScope, mode, setMode, courses, semester, history, coverage, conversationId, sourceCount, send, stop, openConversation, newChat, refreshHistory, deleteConversation, drawerCitation, openSource: setDrawerCitation, closeSource, navigationTarget }}>{children}</Context.Provider>;
 }

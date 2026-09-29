@@ -29,23 +29,30 @@ export async function loadCitedPyqQuestion(chunkId: string, courseIds: string[])
   return chunk ? toHit(chunk) : null;
 }
 
-/** Browse real indexed question chunks when a student requests PYQs without a topic. */
+/** Browse actual indexed exam questions, retaining legacy chunks only for papers not yet backfilled. */
 export async function browsePyqQuestions(courseIds: string[], semester?: number, limit = 5, documentId?: string): Promise<RetrievalHit[]> {
   if (!courseIds.length) return [];
+  const document: Prisma.AcademicDocumentWhereInput = {
+    type: 'pyq', visibility: 'global', processingStatus: 'indexed',
+    OR: [{ sourceFile: null }, { sourceFile: { active: true } }],
+    ...(semester ? { course: { semester } } : {})
+  };
+  const questions = await db.examQuestion.findMany({
+    where: { courseId: { in: courseIds }, ...(documentId ? { documentId } : {}), document },
+    include: { chunk: { include: { document: { include: { resources: true, course: true } } } } },
+    orderBy: [{ year: 'desc' }, { documentId: 'asc' }, { page: 'asc' }, { questionNumber: 'asc' }],
+    take: limit
+  });
+  if (questions.length >= limit) return questions.map((question) => toHit(question.chunk));
   const chunks = await db.documentChunk.findMany({
     where: {
       courseId: { in: courseIds }, ...(documentId ? { documentId } : {}),
-      document: {
-        type: 'pyq', visibility: 'global', processingStatus: 'indexed',
-        OR: [{ sourceFile: null }, { sourceFile: { active: true } }],
-        ...(semester ? { course: { semester } } : {})
-      }
+      examQuestion: { is: null }, document
     },
     include: { document: { include: { resources: true, course: true } } },
     orderBy: [{ document: { updatedAt: 'desc' } }, { chunkIndex: 'asc' }],
     take: Math.max(limit * 8, 32)
   });
-  const questions = chunks.filter((chunk) => /\. Question \d+:/i.test(chunk.content));
-  const selected = (questions.length ? questions : chunks).slice(0, limit);
-  return selected.map(toHit);
+  const legacyQuestions = chunks.filter((chunk) => /\. Question \d+:/i.test(chunk.content));
+  return [...questions.map((question) => toHit(question.chunk)), ...legacyQuestions.slice(0, limit - questions.length).map(toHit)];
 }

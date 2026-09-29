@@ -7,7 +7,7 @@ import { validateCitations } from './citation-engine.js';
 import { getConversation, saveExchange, type ConversationState } from './conversation-memory.js';
 import { buildPrompt } from './prompt-builder.js';
 import { browsePyqQuestions, loadCitedPyqQuestion } from './pyq-browser.js';
-import { retrievalQuery, routeQuery } from './query-router.js';
+import { pyqTopicQuery, retrievalQuery, routeQuery } from './query-router.js';
 import type { ChatInput, ChatResult, CitedSource, QueryIntent } from './types.js';
 
 const noSources = 'I could not find relevant information in the indexed UniCheatSheet material.';
@@ -78,15 +78,16 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
   const conversation = await getConversation(input, courseId, input.scope?.semester ?? (courseId ? (await db.course.findUnique({ where: { id: courseId }, select: { semester: true } }))?.semester ?? null : null), userId, allowedCourseIds);
   if (intent === 'general_chat') return { input, intent, courseId, courseName, conversation, history: conversation.history, sources: [], directAnswer: 'Hi! Ask me about your UniCheatSheet course material.' };
   if (intent === 'database_query') {
-    const pyqOnly = /\b(pyqs?|previous year|past papers?|question papers?)\b/i.test(input.message);
+    const pyqOnly = /\b(pyqs?|previous year|past[-\s]+papers?|question[-\s]+papers?)\b/i.test(input.message);
     const requestedType = pyqOnly ? 'pyq' : /\btutorials?\b/i.test(input.message) ? 'tutorial' : /\bassignments?\b/i.test(input.message) ? 'assignment' : /\bsolutions?\b/i.test(input.message) ? 'solution' : /\blectures?|notes?\b/i.test(input.message) ? 'lecture' : null;
     const count = await db.academicDocument.count({ where: { visibility: 'global', processingStatus: 'indexed', courseId: { in: courseId ? [courseId] : allowedCourseIds }, ...(input.scope?.semester ? { course: { semester: input.scope.semester } } : {}), ...(requestedType ? { type: requestedType } : {}), OR: [{ sourceFile: null }, { sourceFile: { active: true } }] } });
     const label = requestedType ? `${requestedType} documents` : 'indexed documents';
     return { input, intent, courseId, courseName, conversation, history: conversation.history, sources: [], directAnswer: `I found ${count} ${label}${courseName ? ` for ${courseName}` : ''}.` };
   }
   const query = retrievalQuery(input.message, courseId, conversation.history);
-  const pyqMention = /\b(pyqs?|previous year|past papers?|question papers?)\b/i.test(input.message);
+  const pyqMention = /\b(pyqs?|previous year|past[-\s]+papers?|question[-\s]+papers?)\b/i.test(input.message);
   const pyqQuery = input.mode === 'pyqs' || intent === 'resource_search' || (intent === 'practice_generation' && pyqMention);
+  const pyqTopic = pyqQuery ? pyqTopicQuery(input.message, courseId, conversation.history) : query;
   const modeTypes = input.mode === 'notes' ? ['lecture', 'book', 'syllabus'] as const : input.mode === 'solutions' ? ['solution', 'tutorial', 'assignment'] as const : input.mode === 'pyqs' ? ['pyq'] as const : undefined;
   const resourceTypes = input.scope?.resourceTypes ?? (modeTypes ? [...modeTypes] : undefined);
   const numericQuestion = input.message.match(/\b(?:question|q|number|no\.?)\s*(\d{1,2})\b/i)?.[1];
@@ -96,9 +97,9 @@ async function prepare(input: ChatInput, allowedCourseIds: string[], userId: str
   const selectedNumber = intent === 'academic_rag' && input.conversationId ? Number(numericQuestion ?? ordinalQuestion) : 0;
   const selectedCitation = selectedNumber > 0 ? conversation.lastCitations[selectedNumber - 1] : undefined;
   const selectedQuestion = selectedCitation ? await loadCitedPyqQuestion(selectedCitation.chunkId, courseId ? [courseId] : allowedCourseIds) : null;
-  const hits = selectedQuestion ? [selectedQuestion] : pyqQuery && !query
+  const hits = selectedQuestion ? [selectedQuestion] : pyqQuery && !pyqTopic
     ? await browsePyqQuestions(courseId ? [courseId] : allowedCourseIds, input.scope?.semester, 5, scopedDocumentId)
-    : await retrieve({ query: query || input.message, allowedCourseIds, ...(courseId ? { courseId } : {}), ...(input.scope?.semester ? { semester: input.scope.semester } : {}), ...(scopedDocumentId ? { documentId: scopedDocumentId } : {}), ...(input.scope?.resourceId ? { resourceId: input.scope.resourceId } : {}), ...(pyqQuery ? { type: 'pyq' as const } : resourceTypes ? { resourceTypes } : {}), limit: 12 });
+    : await retrieve({ query: pyqQuery ? pyqTopic : query || input.message, allowedCourseIds, ...(courseId ? { courseId } : {}), ...(input.scope?.semester ? { semester: input.scope.semester } : {}), ...(scopedDocumentId ? { documentId: scopedDocumentId } : {}), ...(input.scope?.resourceId ? { resourceId: input.scope.resourceId } : {}), ...(pyqQuery ? { type: 'pyq' as const } : resourceTypes ? { resourceTypes } : {}), limit: 12 });
   const sources = buildContext(intent === 'resource_search' ? selectResourceHits(hits) : hits);
   if (intent === 'resource_search') {
     const answer = sources.length ? `Here are ${sources.length} questions from your indexed past papers:\n${sources.map(({ id, hit }, index) => {
