@@ -12,7 +12,9 @@ The repository is reviewed at line level. Runtime code paths are manually inspec
 
 ### Bottom-line assessment (updated 29 September 2026)
 
-The repository has advanced significantly beyond an early prototype. It contains a coherent RAG stack, JWKS-capable JWT access context, HMAC-keyed account identity, scoped retrieval with RRF-style hybrid ranking, real LLM streaming with provenance labels, structured exam questions, conversation deletion, retention purge, and a dark/cyan Next.js 15 playground. However, it is **not yet production-ready for UniCheatSheet's paid student flow** because the real website is not connected, the production resource catalog is not authoritative, resource links are not protected end-to-end, and several RAG quality and UI gaps remain.
+The repository has advanced significantly beyond an early prototype. It contains a coherent RAG stack, JWKS-capable JWT access context, HMAC-keyed account identity, scoped retrieval with RRF-style hybrid ranking, real LLM streaming with provenance labels, structured exam questions, conversation deletion, retention purge, and a dark/cyan Next.js playground. However, it is **not yet production-ready for UniCheatSheet's paid student flow** because the real website is not connected, the production resource catalog is not authoritative, resource links are not protected end-to-end, and several RAG quality and UI gaps remain.
+
+**Local implementation update (29 September 2026):** Open-ended PYQ chat browsing now prefers `ExamQuestion` records and uses legacy chunks only when no structured record exists for them. `/v1/pyqs/questions` accepts year, exam type, document, question number, and OCR review filters. The standalone UI has a filtered PYQ question browser, document-scoped “Ask AI to solve,” and a conversation delete control. On the temporary corpus, 26 unit tests, 15 isolated integration tests, 13/13 retrieval cases, typecheck, production build, and the high-severity dependency audit passed. See `LOCAL_READINESS.md` for the exact local state and remaining external blockers. Earlier status labels below are retained as historical audit notes; inspect current code and that readiness file before using one as a current status claim.
 
 ---
 
@@ -48,7 +50,7 @@ The repository has advanced significantly beyond an early prototype. It contains
 | ✅ `/v1/pyqs/questions` and `/v1/pyqs/repeated` endpoints | `app.ts` + `pyq-browser.ts` |
 | ✅ **Structured PYQ extraction and backfill** | `scripts/backfill-exam-questions.ts` + `packages/ingestion/src/exam-metadata.ts` |
 | ✅ **Catalog import script** | `scripts/import-resource-catalog.ts` |
-| ✅ Dark/cyan UniCheatSheet-styled playground | Next.js 15, `globals.css`, full chat UI |
+| ✅ Dark/cyan UniCheatSheet-styled playground | Next.js 16, `globals.css`, full chat UI |
 | ✅ Production-mode startup guard | requires `AI_PUBLIC_MODE` + `AI_CORS_ORIGINS` |
 | ✅ **KaTeX math rendering** | `apps/playground/package.json` + `ChatMessage.tsx` |
 | ✅ Resource catalog IDs with explicit `resourceId` in citations | `Citation` type includes `resourceId` |
