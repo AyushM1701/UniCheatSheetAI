@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation';
 import { useChatWorkspace } from '@/hooks/useChatWorkspace';
 import { Header } from '@/components/navigation/Header';
 import { ChatSidebar } from '@/components/navigation/ChatSidebar';
-import { ChatComposer } from './ChatComposer';
+import { ChatComposer, type ComposerPrompt } from './ChatComposer';
+import { FaqPrompts } from './FaqPrompts';
 import { ChatMessage } from './ChatMessage';
 import { SourceDrawer } from './SourceDrawer';
 import { ThinkingState } from './ThinkingState';
@@ -13,6 +14,8 @@ export function Workspace({ initialConversationId }: { initialConversationId?: s
   const { messages, status, error, sourceCount, conversationId, openConversation, drawerCitation, openSource, closeSource, navigationTarget } = useChatWorkspace();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [faqPrompt, setFaqPrompt] = useState<ComposerPrompt | null>(null);
+  const fillFaqPrompt = (text: string, selectText?: string) => setFaqPrompt((current) => ({ id: (current?.id ?? 0) + 1, text, selectText }));
   const bottom = useRef<HTMLDivElement>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
   const followOutput = useRef(true);
@@ -38,7 +41,7 @@ export function Workspace({ initialConversationId }: { initialConversationId?: s
         {error && <p className="chat-error" role="alert">{error}</p>}
         <div ref={bottom} />
       </div></div>
-      <div className="chat-composer-dock"><ChatComposer compact /><p>UniCheatSheet AI can make mistakes. Open a citation to check the original.</p></div>
+      <div className="chat-composer-dock"><ChatComposer compact prompt={faqPrompt} /><FaqPrompts compact onSelect={fillFaqPrompt} /><p>UniCheatSheet AI can make mistakes. Open a citation to check the original.</p></div>
     </main>}
     <SourceDrawer citation={drawerCitation} onClose={closeSource} />
   </div>;
